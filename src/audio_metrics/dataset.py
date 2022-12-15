@@ -1,5 +1,5 @@
 import os
-from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures as cf
 from pathlib import Path
 
 import numpy as np
@@ -38,11 +38,11 @@ def load_audio_task(args):
 
 
 def async_audio_loader(audio_dir, recursive=True, num_workers=None):
-    pool = ThreadPoolExecutor(num_workers)
     items = vggish_audiofile_generator(audio_dir, recursive)
-    for result in pool.map(load_audio_task, items):
-        yield result
-    pool.shutdown()
+    with cf.ThreadPoolExecutor(num_workers) as pool:
+        futures = {pool.submit(load_audio_task, item) for item in items}
+        for fut in cf.as_completed(futures):
+            yield fut.result()
 
 
 class GeneratorDataset(torch.utils.data.IterableDataset):
