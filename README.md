@@ -1,6 +1,7 @@
 # Audio Metrics
 
-This repository contains a python package to compute distribution-based metrics for audio data using embeddings.
+This repository contains a python package to compute distribution-based metrics
+for audio data using embeddings.
 
 * Fréchet Audio Distance (see https://arxiv.org/abs/1812.08466)
 * Density and Coverage (see https://arxiv.org/abs/2002.09797)
@@ -20,7 +21,7 @@ metric = AudioMetrics()
 # instantiate the metrics
 metric.prepare_background('/path/to/real/audiofiles/')
 
-fad, density, coverate = metric.compare_to_background('/path/to/fake/audiofiles')
+fad, density, coverage = metric.compare_to_background('/path/to/fake/audiofiles')
 
 metric.save_base_statistics('/path/to/background_stats.npz')
 

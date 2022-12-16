@@ -102,7 +102,7 @@ class AudioMetrics:
                 # assume source is npz file
                 return MetricInputData.from_npz_file(source_fp)
 
-            if source_fp.is_dir():
+            elif source_fp.is_dir():
                 # recursive, num_workers, model
                 data_iter = iter_data_from_path(
                     source_fp,
@@ -111,8 +111,8 @@ class AudioMetrics:
                     self.model._preprocess,
                 )
                 return self._metrics_input_data_from_iter(data_iter)
-
-            # TODO: can we reach this?
+            else:
+                raise NotImplementedError(f"Cannot load data from {source}")
         else:
             # assume source iterable
             data_iter = preprocess_items(source, self.model._preprocess)

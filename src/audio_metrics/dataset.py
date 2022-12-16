@@ -60,7 +60,6 @@ class GeneratorDataset(torch.utils.data.IterableDataset):
 def preprocess_items(items, preprocessor):
     for item in items:
         result = preprocessor(*item)
-        # print(result.shape)
         # result = result.new_empty(result.shape).normal_()
         yield result
 
