@@ -43,6 +43,9 @@ class MetricInputData:
             self.__dict__[key] = radii
         return radii
 
+    def __len__(self):
+        return len(self.activations)
+
     @property
     def num_samples(self):
         return len(self.activations)
@@ -74,10 +77,11 @@ class AudioMetrics:
         batch_size=1,
         num_workers=1,
         k_neighbor=2,
+        random_weights=False,
     ):
         if device is None:
             device = torch.device("cpu")
-        self.model = get_vggish_model(device)
+        self.model = get_vggish_model(device, random_weights)
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.k_neighbor = k_neighbor
@@ -128,6 +132,9 @@ class AudioMetrics:
         )
         return MetricInputData(activations)
 
+    def __call__(self, source):
+        return self.compare_to_background(source)
+
     def compare_to_background(self, source):
         if self.bg_data is None:
             raise RuntimeError(
@@ -145,7 +152,13 @@ class AudioMetrics:
             fake_data,
             self.k_neighbor,
         )
-        return fad_value, density, coverage
+        return dict(
+            fad=fad_value,
+            density=density,
+            coverage=coverage,
+            n_real=len(self.bg_data),
+            n_fake=len(fake_data),
+        )
 
     def expected_coverage_for_samplesize(self, n_fake):
         # A rough estimate of the coverage of an arbitrary subset of size
@@ -157,7 +170,7 @@ class AudioMetrics:
         result *= coverage_correction_factor(self.k_neighbor)
         return result
 
-    def save_base_statistics(self, outfile, ensure_radii=False):
+    def save_background_statistics(self, outfile, ensure_radii=False):
         if ensure_radii:
             # make sure radii are computed before we save
             self.bg_data.get_radii(self.k_neighbor)

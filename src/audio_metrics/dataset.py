@@ -21,8 +21,10 @@ def file_generator(path, recursive, patterns):
             yield item
 
 
-def vggish_audiofile_generator(path, recursive):
-    for item in file_generator(path, recursive, AUDIO_FILE_PATTERNS):
+def vggish_audiofile_generator(path, recursive, file_patterns=None):
+    if not file_patterns:
+        file_patterns = AUDIO_FILE_PATTERNS
+    for item in file_generator(path, recursive, file_patterns):
         # vggish preprocessor needs samplerate as second arg (even if it isn't
         # used when the first arg is a file path)
         yield (os.fspath(item), None)
@@ -37,8 +39,10 @@ def load_audio_task(args):
     return data, SAMPLE_RATE
 
 
-def async_audio_loader(audio_dir, recursive=True, num_workers=None):
-    items = vggish_audiofile_generator(audio_dir, recursive)
+def async_audio_loader(
+    audio_dir, recursive=True, num_workers=None, file_patterns=None
+):
+    items = vggish_audiofile_generator(audio_dir, recursive, file_patterns)
     with cf.ThreadPoolExecutor(num_workers) as pool:
         futures = {pool.submit(load_audio_task, item) for item in items}
         for fut in cf.as_completed(futures):

@@ -2,7 +2,13 @@ from tqdm import tqdm
 import numpy as np
 import torch
 
-def get_vggish_model(device=None):
+
+def weight_reset(m):
+    if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
+        m.reset_parameters()
+
+
+def get_vggish_model(device=None, reset_weights=False):
     model = torch.hub.load("harritaylor/torchvggish", "vggish")
     if device is not None:
         device = torch.device(
@@ -15,6 +21,9 @@ def get_vggish_model(device=None):
     model.postprocess = False
     model.preprocess = False
     model.embeddings[5] = torch.nn.Identity()
+    if reset_weights:
+        print("resetting weights")
+        model.apply(weight_reset)
     return model
 
 
