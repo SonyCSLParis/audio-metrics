@@ -20,15 +20,19 @@ class CLAP(Embedder):
         self.model.load_ckpt(CHECKPOINT)
         self.sr = SR
         self.activations = defaultdict(list)
-        self.layers = ["audio_projection.0", "audio_projection.2"]
+        self.layers = [
+            "audio_projection.0",
+            "audio_projection.2",
+            # "audio_branch.layers.3.blocks.1.mlp",
+        ]
         for layer in self.layers:
             self.model.get_submodule(f"model.{layer}").register_forward_hook(
                 self._get_activation_hook(layer)
             )
 
-    def preprocess_path(self, fp):
+    def preprocess(self, item):
+        audio, sr = super().preprocess(item)
         # load audio as numpy array from file
-        audio, _ = load_audio(fp, self.sr, mono=True, dtype=np.float32)
         audio = audio.reshape((1, -1))
         return audio
 
@@ -37,9 +41,13 @@ class CLAP(Embedder):
         # todo: batch data using DataLoader (set use_tensor=True in get_audio_embedding_from_data)
         for audio in dataset:
             self.model.get_audio_embedding_from_data(x=audio.reshape((1, -1)))
-        result = {
-            key: torch.cat(acts, 0).cpu().numpy() for key, acts in self.activations.items()
-        }
+        # result = {
+        #     key: np.concatenate(acts, 0)
+        #     for key, acts in self.activations.items()
+        # }
+        for key, acts in self.activations.items():
+            self.activations[key] = np.concatenate(acts, 0)
+        result = self.activations
         self._clear_activations()
         return result
 
@@ -49,6 +57,6 @@ class CLAP(Embedder):
     def _get_activation_hook(self, name):
         def hook(model, input, output):
             # need clone?
-            self.activations[name].append(output.detach())
-        return hook
+            self.activations[name].append(output.clone().detach().cpu().numpy())
 
+        return hook

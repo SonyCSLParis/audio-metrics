@@ -1,3 +1,4 @@
+from pathlib import Path
 from tqdm import tqdm
 import numpy as np
 import torch
@@ -34,21 +35,14 @@ class VGGish(Embedder):
         super().__init__()
         self.model, self.sr = get_vggish_model(device)
 
-    def preprocess_path(self, fp):
-        # load audio as numpy array from file
-        audio, _ = load_audio(fp, self.sr, mono=True, dtype=np.float32)
+    def preprocess(self, item):
+        audio, sr = super().preprocess(item)
         # compute spectrogram
-        data = self.model._preprocess(audio, self.sr)
-        return data
-
-    def preprocess_audio(self, audio, sr=None):
-        if sr is not None and sr != self.sr:
-            raise NotImplementedError()
         data = self.model._preprocess(audio, sr)
         return data
 
     def embed(self, dataset):
-        return get_activations(dataset, self.model)
+        return {"last_feature_layer": get_activations(dataset, self.model)}
         
 
 

@@ -16,7 +16,7 @@ from .dataset import (
     GeneratorDataset,
     preprocess_items,
     audiofile_generator,
-    async_preprocessor
+    async_preprocessor,
 )
 from .fad import compute_frechet_distance, mu_sigma_from_activations
 from .density_coverage import compute_density_coverage
@@ -87,12 +87,13 @@ class AudioMetrics:
         num_workers=1,
         k_neighbor=2,
         random_weights=False,
-        embedder="vggish",  # vggish/clap
     ):
         if device is None:
             device = torch.device("cpu")
-        # self.embedder = VGGish(device)
-        self.embedder = CLAP(device)
+        self.embedders = {
+            "vggish": VGGish(device),
+            # "clap": CLAP(device),
+        }
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.k_neighbor = k_neighbor
@@ -119,33 +120,31 @@ class AudioMetrics:
                 return MetricInputData.from_npz_file(source_fp)
 
             elif source_fp.is_dir():
-                # input_items = async_audio_loader(
-                #     source_fp, recursive, num_workers, sr=self.embedder.sr
-                # )
-                input_items = audiofile_generator(
-                    source_fp, recursive, num_workers
-                )
+                input_items = {
+                    name: audiofile_generator(source_fp, recursive)
+                    for name, embedder in self.embedders.items()
+                }
 
-                preprocessor = self.embedder.preprocess_path
+                preprocessors = {
+                    name: embedder.preprocess
+                    for name, embedder in self.embedders.items()
+                }
             else:
                 raise NotImplementedError(f"Cannot load data from {source}")
         else:
             # source should be an iterable over tuples of either (audio_fp, sr),
             # or (audio_array, sr)
             input_items = source
-            preprocessor = self.embedder.preprocess_array
-        data_iter = async_preprocessor(input_items, preprocessor)
-        # dataset = GeneratorDataset(data_iter)
-        dataset = itertools.chain.from_iterable(data_iter)
-        activations = self.embedder.embed(dataset)
-        return MetricInputData(activations)
-        # return self._metrics_input_data_from_iter(data_iter)
+            preprocessor = self.embedder.preprocess
 
-    def _metrics_input_data_from_iter(self, iterator):
-        dataset = GeneratorDataset(iterator)
-        activations = self.embedder.embed(dataset)
-        
-        return MetricInputData(activations)
+        result = {}
+        for name, preprocessor in preprocessors.items():
+            data_iter = async_preprocessor(input_items[name], preprocessor)
+            dataset = GeneratorDataset(data_iter)
+            activation_dict = self.embedders[name].embed(dataset)
+            for layer_name, activations in activation_dict.items():
+                result[(name, layer_name)] = MetricInputData(activations)
+        return result
 
     # begin incremental API
 

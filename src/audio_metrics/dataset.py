@@ -4,7 +4,8 @@ from pathlib import Path
 from functools import partial
 from typing import Optional
 import subprocess
-
+from tqdm import tqdm
+from queue import Queue
 import numpy as np
 import torch
 import soundfile
@@ -91,8 +92,7 @@ class GeneratorDataset(torch.utils.data.IterableDataset):
         self.generator = generator
 
     def __iter__(self):
-        for track in self.generator:
-            print('track shape', track.shape)
+        for track in tqdm(self.generator):
             for frame in track:
                 yield frame
 
@@ -114,44 +114,69 @@ def audiofile_generator(path, recursive, file_patterns=None):
         yield item.as_posix()
 
 
+def _push_tasks(items, executor, preprocessor, queue):
+    for item in items:
+        fut = executor.submit(preprocessor, item)
+        # crucially, this blocks until there is space on the queue
+        queue.put(fut)
+
+
 def async_preprocessor(
-    # audio_dir,
     items,
     preprocessor,
-    # recursive=True,
     num_workers=None,
-    # file_patterns=None,
+    buffer_size=10,
 ):
-    # items = audiofile_generator(audio_dir, recursive, file_patterns)
+    """Apply `preprocessor` to `items` in parallel threads and yield the
+    results. `buffer_size` controls how many items are preprocessed in
+    advance. This limit is necessary to avoid the preprocessing getting ahead
+    too far of the consumer of this generator, which can lead to excessive
+    memory use.
+    """
 
-    # def load_audio_func(args):
-    #     return load_audio_ffmpeg(*args, mono=True), SAMPLE_RATE
+    queue = Queue(maxsize=buffer_size)
+    with (
+        cf.ThreadPoolExecutor(1) as pusher_thread,
+        cf.ThreadPoolExecutor(num_workers) as workers,
+    ):
+        pusher = pusher_thread.submit(
+            _push_tasks, items, workers, preprocessor, queue
+        )
+        while not pusher.done():
+            yield queue.get().result()
+        while not queue.empty():
+            yield queue.get().result()
 
-    with cf.ThreadPoolExecutor(num_workers) as pool:
-        futures = {pool.submit(preprocessor, item) for item in items}
-        # futures = {pool.submit(load_audio_func, item) for item in items}
-        for fut in cf.as_completed(futures):
-            yield fut.result()
 
-
-# def iter_data_from_path(folder_fp, recursive, num_workers, preprocessor):
-#     loader = async_audio_loader(folder_fp, recursive, num_workers)
-#     yield from preprocess_items(loader, preprocessor)
+# def sync_preprocessor(
+#     items,
+#     preprocessor,
+#     num_workers=None,
+# ):
+#     for item in items:
+#         yield preprocessor(item)
 
 
 class Embedder:
     def __init__(self):
         self.sr = None
 
-    def preprocess_path(self, audio_fp):
+    def preprocess(self, item):
+        print(item)
         # given audio (array), return a torch tensor of the data that should go
         # into the embedder, with a leading batch dimension
-        raise NotImplementedError()
-
-    def preprocess_array(self, audio, sr=None):
-        # given audio (array), return a torch tensor of the data that should go
-        # into the embedder, with a leading batch dimension
-        raise NotImplementedError()
+        if isinstance(item, (Path, str)):
+            # load audio as numpy array from file
+            audio, sr = load_audio(item, self.sr, mono=True, dtype=np.float32)
+        elif isinstance(item, (tuple, list)):
+            audio, sr = item
+            if sr is not None and sr != self.sr:
+                audio = resampy.resample(audio, sr, self.sr)
+        else:
+            raise NotImplementedError(
+                "argument must be tuple of (audio_waveform, samplerate)"
+            )
+        return audio, sr
 
     def embed(self, iterable):
         raise NotImplementedError()
