@@ -1,14 +1,23 @@
 import os
 import dataclasses
 from pathlib import Path
+import itertools
+from collections import defaultdict
 
 import scipy
 import torch
 import numpy as np
 from prdc import prdc
 
-from .vggish import get_vggish_model, get_activations
-from .dataset import iter_data_from_path, GeneratorDataset, preprocess_items
+from .vggish import VGGish
+from .clap import CLAP
+from .dataset import (
+    async_audio_loader,
+    GeneratorDataset,
+    preprocess_items,
+    audiofile_generator,
+    async_preprocessor
+)
 from .fad import compute_frechet_distance, mu_sigma_from_activations
 from .density_coverage import compute_density_coverage
 
@@ -78,14 +87,17 @@ class AudioMetrics:
         num_workers=1,
         k_neighbor=2,
         random_weights=False,
+        embedder="vggish",  # vggish/clap
     ):
         if device is None:
             device = torch.device("cpu")
-        self.model = get_vggish_model(device, random_weights)
+        # self.embedder = VGGish(device)
+        self.embedder = CLAP(device)
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.k_neighbor = k_neighbor
         self.bg_data = None
+        self.activations = defaultdict(list)
         if background_data is not None:
             self.prepare_background(background_data)
 
@@ -94,7 +106,7 @@ class AudioMetrics:
 
     def load_metric_input_data(self, source, recursive=True, num_workers=None):
         # source can be either:
-        # 1. An .npz file containing the precomputed data
+        # 1. An .npz file containing the precomputed data (as produced by `save_background_statistics()`)
         # 2. A directory path from which to load audio files
         # 3. An iterator over pairs (signal, samplerate), where signal is a 1-d
         #    numpy array
@@ -107,40 +119,89 @@ class AudioMetrics:
                 return MetricInputData.from_npz_file(source_fp)
 
             elif source_fp.is_dir():
-                # recursive, num_workers, model
-                data_iter = iter_data_from_path(
-                    source_fp,
-                    recursive,
-                    num_workers,
-                    self.model._preprocess,
+                # input_items = async_audio_loader(
+                #     source_fp, recursive, num_workers, sr=self.embedder.sr
+                # )
+                input_items = audiofile_generator(
+                    source_fp, recursive, num_workers
                 )
-                return self._metrics_input_data_from_iter(data_iter)
+
+                preprocessor = self.embedder.preprocess_path
             else:
                 raise NotImplementedError(f"Cannot load data from {source}")
         else:
-            # assume source iterable
-            data_iter = preprocess_items(source, self.model._preprocess)
-            return self._metrics_input_data_from_iter(data_iter)
+            # source should be an iterable over tuples of either (audio_fp, sr),
+            # or (audio_array, sr)
+            input_items = source
+            preprocessor = self.embedder.preprocess_array
+        data_iter = async_preprocessor(input_items, preprocessor)
+        # dataset = GeneratorDataset(data_iter)
+        dataset = itertools.chain.from_iterable(data_iter)
+        activations = self.embedder.embed(dataset)
+        return MetricInputData(activations)
+        # return self._metrics_input_data_from_iter(data_iter)
 
     def _metrics_input_data_from_iter(self, iterator):
         dataset = GeneratorDataset(iterator)
+        activations = self.embedder.embed(dataset)
+        
+        return MetricInputData(activations)
+
+    # begin incremental API
+
+    def add(self, iterator, label=None):
+        data_iter = preprocess_items(iterator, self.model._preprocess)
+        dataset = GeneratorDataset(data_iter)
         activations = get_activations(
             dataset,
             model=self.model,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
         )
-        return MetricInputData(activations)
+        self.activations[label].append(activations)
+
+    def reset(self, label):
+        self.activations[label] = []
+
+    def evaluate(self, label):
+        if not self.activations[label]:
+            raise Exception("Nothing to evaluate, use .add() to add data first")
+        activations = np.concatenate(self.activations[label], 0)
+        fake_data = MetricInputData(activations)
+        fad_value = compute_frechet_distance(
+            self.bg_data.mu, self.bg_data.sigma, fake_data.mu, fake_data.sigma
+        )
+        density, coverage = compute_density_coverage(
+            self.bg_data, fake_data, self.k_neighbor
+        )
+        return dict(
+            fad=fad_value,
+            density=density,
+            coverage=coverage,
+            n_real=len(self.bg_data),
+            n_fake=len(fake_data),
+        )
+
+    # end incremental API
 
     def __call__(self, source):
         return self.compare_to_background(source)
 
-    def compare_to_background(self, source):
+    def compare_to_background(self, source=None):
         if self.bg_data is None:
             raise RuntimeError(
                 "Background data not available. Please provide data using `prepare_background()`"
             )
-        fake_data = self.load_metric_input_data(source)
+        if source is None:
+            if not self.activations:
+                raise Exception(
+                    "No source specified, and not activations accumulated for computing metrics"
+                )
+            else:
+                activations = np.concatenate(self.activations, 0)
+                fake_data = MetricInputData(activations)
+        else:
+            fake_data = self.load_metric_input_data(source)
         fad_value = compute_frechet_distance(
             self.bg_data.mu,
             self.bg_data.sigma,

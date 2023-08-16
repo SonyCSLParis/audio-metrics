@@ -2,6 +2,7 @@ from tqdm import tqdm
 import numpy as np
 import torch
 
+from audio_metrics.dataset import Embedder, load_audio
 
 def weight_reset(m):
     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
@@ -24,7 +25,31 @@ def get_vggish_model(device=None, reset_weights=False):
     if reset_weights:
         print("resetting weights")
         model.apply(weight_reset)
-    return model
+    sr = 16000
+    return model, sr
+
+
+class VGGish(Embedder):
+    def __init__(self, device):
+        super().__init__()
+        self.model, self.sr = get_vggish_model(device)
+
+    def preprocess_path(self, fp):
+        # load audio as numpy array from file
+        audio, _ = load_audio(fp, self.sr, mono=True, dtype=np.float32)
+        # compute spectrogram
+        data = self.model._preprocess(audio, self.sr)
+        return data
+
+    def preprocess_audio(self, audio, sr=None):
+        if sr is not None and sr != self.sr:
+            raise NotImplementedError()
+        data = self.model._preprocess(audio, sr)
+        return data
+
+    def embed(self, dataset):
+        return get_activations(dataset, self.model)
+        
 
 
 def get_activations(dataset, model, batch_size=50, num_workers=1):
@@ -54,7 +79,8 @@ def get_activations(dataset, model, batch_size=50, num_workers=1):
     pred_arr = []
     device = next(model.parameters()).device
     with torch.no_grad():
-        for batch in tqdm(dataloader):
+        # for batch in tqdm(dataloader):
+        for batch in dataloader:
             batch = batch.to(device)
             pred = model(batch)
             pred = pred.cpu().numpy()
