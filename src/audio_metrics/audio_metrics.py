@@ -92,7 +92,7 @@ class AudioMetrics:
             device = torch.device("cpu")
         self.embedders = {
             "vggish": VGGish(device),
-            # "clap": CLAP(device),
+            "clap": CLAP(device),
         }
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -120,30 +120,29 @@ class AudioMetrics:
                 return MetricInputData.from_npz_file(source_fp)
 
             elif source_fp.is_dir():
-                input_items = {
-                    name: audiofile_generator(source_fp, recursive)
-                    for name, embedder in self.embedders.items()
-                }
-
-                preprocessors = {
-                    name: embedder.preprocess
-                    for name, embedder in self.embedders.items()
-                }
+                input_items = audiofile_generator(source_fp, recursive)
             else:
                 raise NotImplementedError(f"Cannot load data from {source}")
         else:
             # source should be an iterable over tuples of either (audio_fp, sr),
             # or (audio_array, sr)
             input_items = source
-            preprocessor = self.embedder.preprocess
 
+        preprocessors = {
+            name: embedder.preprocess
+            for name, embedder in self.embedders.items()
+        }
         result = {}
-        for name, preprocessor in preprocessors.items():
-            data_iter = async_preprocessor(input_items[name], preprocessor)
-            dataset = GeneratorDataset(data_iter)
-            activation_dict = self.embedders[name].embed(dataset)
-            for layer_name, activations in activation_dict.items():
-                result[(name, layer_name)] = MetricInputData(activations)
+        batch_size = 100
+        batch = list(itertools.islice(input_items, batch_size))
+        while batch:
+            for name, preprocessor in preprocessors.items():
+                data_iter = async_preprocessor(batch, preprocessor)
+                dataset = GeneratorDataset(data_iter)
+                activation_dict = self.embedders[name].embed(dataset)
+                for layer_name, activations in activation_dict.items():
+                    result[(name, layer_name)] = MetricInputData(activations)
+            batch = list(itertools.islice(input_items, batch_size))
         return result
 
     # begin incremental API
@@ -200,25 +199,23 @@ class AudioMetrics:
                 activations = np.concatenate(self.activations, 0)
                 fake_data = MetricInputData(activations)
         else:
-            fake_data = self.load_metric_input_data(source)
-        fad_value = compute_frechet_distance(
-            self.bg_data.mu,
-            self.bg_data.sigma,
-            fake_data.mu,
-            fake_data.sigma,
-        )
-        density, coverage = compute_density_coverage(
-            self.bg_data,
-            fake_data,
-            self.k_neighbor,
-        )
-        return dict(
-            fad=fad_value,
-            density=density,
-            coverage=coverage,
-            n_real=len(self.bg_data),
-            n_fake=len(fake_data),
-        )
+            fake_data_dict = self.load_metric_input_data(source)
+        result = dict()
+        for key, real_data in self.bg_data.items():
+            fake_data = fake_data_dict[key]
+            fad_value = compute_frechet_distance(
+                real_data.mu, real_data.sigma, fake_data.mu, fake_data.sigma
+            )
+            density, coverage = compute_density_coverage(
+                real_data, fake_data, self.k_neighbor
+            )
+            key_str = "_".join(key)
+            result[f"fad_{key_str}"] = fad_value
+            result[f"density_{key_str}"] = density
+            result[f"coverage_{key_str}"] = coverage
+            # n_real=len(real_data),
+            # n_fake=len(fake_data),
+        return result
 
     def expected_coverage_for_samplesize(self, n_fake):
         # A rough estimate of the coverage of an arbitrary subset of size

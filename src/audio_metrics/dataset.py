@@ -92,7 +92,7 @@ class GeneratorDataset(torch.utils.data.IterableDataset):
         self.generator = generator
 
     def __iter__(self):
-        for track in tqdm(self.generator):
+        for track in self.generator:
             for frame in track:
                 yield frame
 
@@ -162,7 +162,6 @@ class Embedder:
         self.sr = None
 
     def preprocess(self, item):
-        print(item)
         # given audio (array), return a torch tensor of the data that should go
         # into the embedder, with a leading batch dimension
         if isinstance(item, (Path, str)):
