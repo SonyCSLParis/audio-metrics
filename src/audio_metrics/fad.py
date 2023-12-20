@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from scipy import linalg
 
 
@@ -6,6 +7,19 @@ def mu_sigma_from_activations(act):
     mu = np.mean(act, axis=0)
     sigma = np.cov(act, rowvar=False)
     return mu, sigma
+
+
+def frechet_distance(
+    mu_x: torch.Tensor,
+    sigma_x: torch.Tensor,
+    mu_y: torch.Tensor,
+    sigma_y: torch.Tensor,
+) -> torch.Tensor:
+    # https://www.reddit.com/r/MachineLearning/comments/12hv2u6/d_a_better_way_to_compute_the_fr%C3%A9chet_inception/
+    a = (mu_x - mu_y).square().sum(dim=-1)
+    b = sigma_x.trace() + sigma_y.trace()
+    c = torch.linalg.eigvals(sigma_x @ sigma_y).sqrt().real.sum(dim=-1)
+    return a + b - 2 * c
 
 
 def compute_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
@@ -61,6 +75,7 @@ def compute_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
         if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
             m = np.max(np.abs(covmean.imag))
             raise ValueError("Imaginary component {}".format(m))
+
         covmean = covmean.real
 
     tr_covmean = np.trace(covmean)
