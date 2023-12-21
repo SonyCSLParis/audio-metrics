@@ -6,6 +6,7 @@ import concurrent.futures as cf
 from functools import partial
 from itertools import tee
 import numpy as np
+import logging
 
 import queue
 import torch
@@ -103,28 +104,30 @@ class ActivationStorage:
         self.in_queue.put(None)
 
     def add_item(self, act_dict, item_ids, name):
+        logger = logging.getLogger(__name__)
         item_ids = item_ids.tolist()
-        print("storing", item_ids, name)
+        logger.debug(f"storing {item_ids} {name}")
         for k, v in act_dict.items():
             for item_id, item in zip(item_ids, v):
                 self.item_acts[item_id][(name, k)] = item
                 self.item_status[item_id].add(name)
-        print("stored", item_ids, name)
+        logger.debug(f"stored {item_ids} {name}")
         self._dispatch_finished_items()
-        print("dispatcher ran")
+        logger.debug("dispatcher ran")
 
     def _dispatch_finished_items(self):
         for item_id in sorted(self.item_status.keys()):
             is_complete = len(self.item_status[item_id]) == self.n_names
             is_due = not self.ordered or (self.ordered and item_id <= self.i)
+            print("item id", item_id, is_complete, is_due)
             if is_complete and is_due:
                 acts = self.item_acts.pop(item_id)
-                self.item_status.pop(item_id)
-                # if self.return_index:
-                #     item = (item_id, acts)
-                # else:
-                #     item = acts
-                self.out_queue.put((item_id, acts))
+                print("acts", acts.shape)
+                if self.return_index:
+                    item = (item_id, acts)
+                else:
+                    item = acts
+                self.out_queue.put(item)
                 self.i += 1
 
 
@@ -153,21 +156,23 @@ class EmbedderPipeline:
             dataset, batch_size=batch_size, drop_last=False
         )
         for act_dict, idx in embedder.embed_from_loader(dl):
-            print("embed", idx)
+            # print("embed", idx)
             act_dict_avg = embedder.postprocess(act_dict, "average")
-            print("embed postprocessed", idx)
+            # print("embed postprocessed", idx)
             # storage.add_item(act_dict_avg, idx, name)
             storage_queue.put((act_dict_avg, idx, name))
-            print("post-processed item stored", idx)
-        print("embedder done", name)
+        #     print("post-processed item stored", idx)
+        # print("embedder done", name)
 
     def _store(self, storage):
         storage.run()
 
     def _feed(self, items, q):
         for i, item in enumerate(items):
-            print("feeding item", i, "qsize", q.qsize())
+            # print("feeding item", i, "qsize", q.qsize())
             q.put((i, item))
+        #     print("fed item", i, "qsize", q.qsize())
+        # print("done feeding")
 
     # def embed(self, data_iter, win_dur, ordered=True, max_workers=None):
     def embed(self, data_iter, ordered=True, max_workers=None):
@@ -179,7 +184,7 @@ class EmbedderPipeline:
         """
         batch_size = 3
         # todo set queue size relative to max_workers
-        preprocess_q = queue.Queue(maxsize=100)
+        preprocess_q = queue.Queue(maxsize=10)
         storage_q = queue.Queue()
         out_q = queue.Queue()
         datasets = {
@@ -190,23 +195,22 @@ class EmbedderPipeline:
             list(self.embedders.keys()), storage_q, out_q, ordered=ordered
         )
         with (
-            cf.ProcessPoolExecutor(max_workers=max_workers) as executor,
-            cf.ThreadPoolExecutor(max_workers=1) as feeder_exec,
+            # cf.ProcessPoolExecutor(max_workers=max_workers) as executor,
+            cf.ThreadPoolExecutor(max_workers=max_workers) as executor,
             cf.ThreadPoolExecutor(
-                max_workers=len(self.embedders)
-            ) as embedder_exec,
-            cf.ThreadPoolExecutor(max_workers=1) as storage_exec,
+                max_workers=len(self.embedders) + 2
+            ) as thread_exec,
         ):
             # start a future for a thread that sends work in through the queue
             futures = {
-                feeder_exec.submit(
+                thread_exec.submit(
                     self._feed, data_iter, preprocess_q
                 ): "FEEDER DONE"
             }
             embed_futures = []
-            storage_future = storage_exec.submit(self._store, storage)
+            storage_future = thread_exec.submit(self._store, storage)
             for (name, embedder), dataset in datasets.items():
-                fut = embedder_exec.submit(
+                fut = thread_exec.submit(
                     # self._embed(embedder, dataset, emb_q)
                     self._embed,
                     embedder,
@@ -217,15 +221,15 @@ class EmbedderPipeline:
                 )
                 embed_futures.append(fut)
             while futures:
-                print(
-                    "working  pp out; futures",
-                    preprocess_q.qsize(),
-                    out_q.qsize(),
-                    len(futures)
-                    # futures.values(),
-                )
-                if len(futures) == 1:
-                    print("last remaining future", futures.values())
+                # print(
+                #     "working  pp out; futures",
+                #     preprocess_q.qsize(),
+                #     out_q.qsize(),
+                #     len(futures)
+                #     # futures.values(),
+                # )
+                # if len(futures) == 1:
+                #     print("last remaining future", futures.values())
                 # check for status of the futures that are currently working
                 done, _ = cf.wait(
                     futures, timeout=0.25, return_when=cf.FIRST_COMPLETED
@@ -248,7 +252,7 @@ class EmbedderPipeline:
                 for future in done:
                     item = futures.pop(future)
                     if item == "FEEDER DONE":
-                        print("feeder finished")
+                        # print("feeder finished")
                         continue
                     item_ids, preprocess_key = item
                     try:
@@ -258,10 +262,10 @@ class EmbedderPipeline:
                             f"{(item_ids, preprocess_key)} generated an exception: {exc}"
                         )
                         continue
-                    print("  preprocessing returned for ", item)
+                    # print("  preprocessing returned for ", item)
                     # pass preprocessed items on to the corresponding embedders
                     for name, embedder in self.emb_by_key[preprocess_key]:
-                        print("adding preprocessed item", item, "to dataset")
+                        # print("adding preprocessed item", item, "to dataset")
                         datasets[(name, embedder)].add_item(audio_sr, item_ids)
                         preprocess_q.task_done()
 
@@ -274,7 +278,7 @@ class EmbedderPipeline:
             print("Finalizing datasets; futures:", len(futures))
             for dataset in datasets.values():
                 dataset.finalize()
-            print(embed_futures)
+            # print(embed_futures)
             cf.wait(embed_futures)
             storage.finalize()
             cf.wait((storage_future,))
