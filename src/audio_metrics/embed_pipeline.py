@@ -1,70 +1,12 @@
 #!/usr/bin/env python
-import argparse
-from pathlib import Path
 from collections import defaultdict
 import concurrent.futures as cf
-from functools import partial
-from itertools import tee
-import numpy as np
-import logging
-
 import queue
+
 import torch
 
-from audio_metrics.dataset import async_audio_loader, audio_slicer, _prep
-from audio_metrics.vggish import VGGish
-from audio_metrics.clap import CLAP
-from audio_metrics.openl3 import OpenL3
+from audio_metrics.dataset import audio_slicer
 from audio_metrics import AudioMetrics
-
-
-# class ActivationStorage:
-#     """
-#     Gather activations from the pipeline, and store them as npz files (one
-#     file per song) in a folder. Since windows from songs can be spread across
-#     batches, we need to split the batches by song.
-#     """
-
-#     def __init__(self, names, outdir=None, out_queue=None):
-#         self.outdir = outdir
-#         self.out_queue = out_queue
-#         self.names = names
-#         if outdir:
-#             outdir.mkdir(parents=True, exist_ok=True)
-#         self.song_acts = defaultdict(lambda: defaultdict(list))
-#         self.song_status = defaultdict(set)
-
-#     def _split_act_dict(self, act_dict, song_idx, split_points, name):
-#         song_acts = defaultdict(dict)
-#         song_idx_parts = np.split(song_idx, split_points)
-#         for k, v in act_dict.items():
-#             for idx, item in zip(song_idx_parts, np.split(v, split_points)):
-#                 if len(idx) > 0:
-#                     song_acts[idx[0]][(name, k)] = item
-#         for i, act in song_acts.items():
-#             for k, v in act.items():
-#                 self.song_acts[i][k].append(v)
-
-#     def add_item(self, act_dict, idx, name):
-#         idx = idx.numpy()
-#         song_ends = np.where(idx[:, -1])[0]
-#         self._split_act_dict(act_dict, idx[:, 0], song_ends + 1, name)
-#         ended_songs = idx[song_ends, 0]
-#         for ended_song in ended_songs:
-#             # print("ended songs", ended_song, name)
-#             self.song_status[ended_song].add(name)
-#             if len(self.song_status[ended_song]) == len(self.names):
-#                 self._store_song(ended_song)
-#                 del self.song_status[ended_song]
-
-#     def _store_song(self, i):
-#         act = self.song_acts.pop(i)
-#         stacked = dict((k, np.vstack(v)) for k, v in act.items())
-#         if self.outdir:
-#             fp = self.outdir / f"{i}.npz"
-#             AudioMetrics.save_embeddings_file(stacked, fp)
-#         if self.out_queue:
-#             self.out_queue.put(stacked)
 
 
 class ActivationStorage:
@@ -76,7 +18,11 @@ class ActivationStorage:
     :param names: The names of the embedder models
     :param out_queue: The queue on which to put finished items
     :param ordered: Flag indicating whether to return the items according to
-        their item_id order.
+        their item_id order
+    :param return_index: Flag indicating whether to return just the activations
+        or a tuple (i, activations), where i is the index of the item.  This can
+        be useful when ordered=False, and you need to keep track of the order
+        externally
     """
 
     def __init__(self, names, out_queue, ordered=True, return_index=False):
@@ -91,36 +37,25 @@ class ActivationStorage:
         self.i = 0
 
     def add_item(self, act_dict, item_ids, name):
-        logger = logging.getLogger(__name__)
         item_ids = item_ids.tolist()
-        logger.debug(f"storing {item_ids} {name}")
         for k, v in act_dict.items():
             for item_id, item in zip(item_ids, v):
                 self.item_acts[item_id][(name, k)] = item
                 self.item_status[item_id].add(name)
-        logger.debug(f"stored {item_ids} {name}")
         self._dispatch_finished_items()
-        logger.debug("dispatcher ran")
 
     def _dispatch_finished_items(self):
-        dispatched = set()
         for item_id in sorted(self.item_status.keys()):
             is_complete = len(self.item_status[item_id]) == self.n_names
             is_due = not self.ordered or (self.ordered and item_id <= self.i)
-            # print("item id", item_id, is_complete, is_due)
             if is_complete and is_due:
-                # print(self.item_acts.keys())
-                acts = self.item_acts.pop(item_id, None)
-                # print("acts", acts)  # acts.shape)
+                del self.item_status[item_id]
+                acts = self.item_acts.pop(item_id)
                 if self.return_index:
-                    item = (item_id, acts)
+                    self.out_queue.put((item_id, acts))
                 else:
-                    item = acts
-                self.out_queue.put(item)
-                dispatched.add(item_id)
+                    self.out_queue.put(acts)
                 self.i += 1
-        for item in dispatched:
-            self.item_status.pop(item)
 
 
 class EmbedderPipeline:
@@ -136,45 +71,30 @@ class EmbedderPipeline:
             dataset, batch_size=batch_size, drop_last=False
         )
         for act_dict, idx in embedder.embed_from_loader(dl):
-            # print("embed", idx)
             act_dict_avg = embedder.postprocess(act_dict, "average")
-            # print("embed postprocessed", idx)
             storage.add_item(act_dict_avg, idx, name)
-        #     print("post-processed item stored", idx)
-        # print("embedder done", name)
-
-    # def _embed(self, embedder, dataset, batch_size, name, storage_queue):
-    #     dl = torch.utils.data.DataLoader(
-    #         dataset, batch_size=batch_size, drop_last=False
-    #     )
-    #     for act_dict, idx in embedder.embed_from_loader(dl):
-    #         # print("embed", idx)
-    #         act_dict_avg = embedder.postprocess(act_dict, "average")
-    #         # print("embed postprocessed", idx)
-    #         # storage.add_item(act_dict_avg, idx, name)
-    #         storage_queue.put((act_dict_avg, idx, name))
-    #     #     print("post-processed item stored", idx)
-    #     # print("embedder done", name)
-
-    # def _store(self, storage):
-    #     storage.run()
 
     def _feed(self, items, q):
         for i, item in enumerate(items):
-            # print("feeding item", i, "qsize", q.qsize())
             q.put((i, item))
-        #     print("fed item", i, "qsize", q.qsize())
-        # print("done feeding")
 
-    # def embed(self, data_iter, win_dur, ordered=True, max_workers=None):
-    def embed(self, data_iter, ordered=True, max_workers=None):
+    def embed(self, data_iter, batch_size=3, ordered=True, max_workers=None):
         """
-        data_iter should be an iterator over pairs ((waveform, sr), identifier).
-        waveform should be 1d, and identifier can be anything that is collatable
-        by pytorch's default collate_fn.  It is returned as is along with the
-        embeddings.
+        Embed waveforms provided by `data_iter`, and yield the embeddings.
+
+        :param data_iter: An iterator over pairs ((waveform, sr), identifier).
+            waveform should be 1d, and identifier can be anything that is
+            collatable by pytorch's default collate_fn.  It is returned as is
+            along with the embeddings.
+
+        :param batch_size: Batch size for computing embeddings (default 3)
+
+        :param ordered: Flag indicating whether the embeddings should be yielded
+            in the same order as the input, or in the order they become
+            available.  Default: True.
+
+        :param max_workers: Number of workers for the preprocessing pool
         """
-        batch_size = 3
         # todo set queue size relative to max_workers
         preprocess_q = queue.Queue(maxsize=10)
         out_q = queue.Queue()
@@ -199,28 +119,12 @@ class EmbedderPipeline:
                 ): "FEEDER DONE"
             }
             embed_futures = []
-            # storage_future = thread_exec.submit(self._store, storage)
             for (name, embedder), dataset in datasets.items():
                 fut = thread_exec.submit(
-                    # self._embed(embedder, dataset, emb_q)
-                    self._embed,
-                    embedder,
-                    dataset,
-                    batch_size,
-                    name,
-                    storage,
+                    self._embed, embedder, dataset, batch_size, name, storage
                 )
                 embed_futures.append(fut)
             while futures:
-                # print(
-                #     "working  pp out; futures",
-                #     preprocess_q.qsize(),
-                #     out_q.qsize(),
-                #     len(futures)
-                #     # futures.values(),
-                # )
-                # if len(futures) == 1:
-                #     print("last remaining future", futures.values())
                 # check for status of the futures that are currently working
                 done, _ = cf.wait(
                     futures, timeout=0.25, return_when=cf.FIRST_COMPLETED
@@ -243,33 +147,26 @@ class EmbedderPipeline:
                 for future in done:
                     item = futures.pop(future)
                     if item == "FEEDER DONE":
-                        # print("feeder finished")
                         continue
                     item_ids, preprocess_key = item
                     try:
                         audio_sr = future.result()
                     except Exception as exc:
-                        print(
-                            f"{(item_ids, preprocess_key)} generated an exception: {exc}"
-                        )
-                        continue
-                    # print("  preprocessing returned for ", item)
+                        raise exc
+
                     # pass preprocessed items on to the corresponding embedders
                     for name, embedder in self.emb_by_key[preprocess_key]:
-                        # print("adding preprocessed item", item, "to dataset")
-                        datasets[(name, embedder)].add_item(audio_sr, item_ids)
-                    # preprocess_q.task_done()
+                        datasets[(name, embedder)].add_item(
+                            (audio_sr[0], item_ids)
+                        )
 
                 while True:
                     try:
                         yield out_q.get_nowait()
                     except queue.Empty:
                         break
-            # preprocess_q.join()
-            # print("Finalizing datasets; futures:", len(futures))
             for dataset in datasets.values():
                 dataset.finalize()
-            # print(embed_futures)
             cf.wait(embed_futures)
             while not out_q.empty():
                 yield out_q.get()
@@ -277,59 +174,57 @@ class EmbedderPipeline:
 
 class QueueDataset(torch.utils.data.IterableDataset):
     """
-    An IterableDataset wrapper around a queue.  This class expects ((audio, sr),
-    id) items from the queue and yields (audio, id).  (TODO: drop sr somewhere
-    else)
+    An IterableDataset wrapper around a queue.  This class expects (audio, id)
+    items from the queue and yields them.
     """
 
     def __init__(self, queue_size=100, name=None):
         self.queue = queue.Queue(maxsize=queue_size)
         self.name = name
+        self.end_token = object()
 
-    def add_item(self, item, item_id):
-        self.queue.put((item, item_id))
+    def add_item(self, item):
+        self.queue.put(item)
 
     def finalize(self):
-        self.queue.put((None, None))
+        self.queue.put(self.end_token)
 
     def __next__(self):
-        item, item_id = self.queue.get()
-        # print("qds got", item)
-        if item is None:
+        item = self.queue.get()
+        if item is self.end_token:
             raise StopIteration()
-        audio, _ = item
-        return audio, item_id
+        return item
 
     def __iter__(self):
         return self
 
 
-# NOTE: not a drop in replacement for QueueDataset (need to check)
-class QueueSlicingDataset(torch.utils.data.IterableDataset):
-    def __init__(self, win_dur, queue_size=100, name=None):
-        self.win_dur = win_dur
-        self.queue = queue.Queue(maxsize=queue_size)
-        self.name = name
+# # NOTE: not a drop in replacement for QueueDataset (need to check)
+# class QueueSlicingDataset(torch.utils.data.IterableDataset):
+#     def __init__(self, win_dur, queue_size=100, name=None):
+#         self.win_dur = win_dur
+#         self.queue = queue.Queue(maxsize=queue_size)
+#         self.name = name
 
-    def add_item(self, item, song_idx):
-        to_be_put = None
-        for win_idx, audio_sr in enumerate(audio_slicer(item, self.win_dur)):
-            if to_be_put is not None:
-                self.queue.put(to_be_put)
-            to_be_put = [audio_sr, song_idx, win_idx, 0]
-        if to_be_put is not None:
-            to_be_put[-1] = 1
-            self.queue.put(to_be_put)
+#     def add_item(self, item, song_idx):
+#         to_be_put = None
+#         for win_idx, audio_sr in enumerate(audio_slicer(item, self.win_dur)):
+#             if to_be_put is not None:
+#                 self.queue.put(to_be_put)
+#             to_be_put = [audio_sr, song_idx, win_idx, 0]
+#         if to_be_put is not None:
+#             to_be_put[-1] = 1
+#             self.queue.put(to_be_put)
 
-    def finalize(self):
-        self.queue.put((None, None, None, None))
+#     def finalize(self):
+#         self.queue.put((None, None, None, None))
 
-    def __next__(self):
-        item, song_idx, win_idx, last = self.queue.get()
-        if item is None:
-            raise StopIteration()
-        audio, _ = item
-        return audio, torch.tensor([song_idx, last])
+#     def __next__(self):
+#         item, song_idx, win_idx, last = self.queue.get()
+#         if item is None:
+#             raise StopIteration()
+#         audio, _ = item
+#         return audio, torch.tensor([song_idx, last])
 
-    def __iter__(self):
-        return self
+#     def __iter__(self):
+#         return self
