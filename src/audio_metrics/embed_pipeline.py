@@ -79,10 +79,7 @@ class ActivationStorage:
         their item_id order.
     """
 
-    def __init__(
-        self, names, in_queue, out_queue, ordered=True, return_index=False
-    ):
-        self.in_queue = in_queue
+    def __init__(self, names, out_queue, ordered=True, return_index=False):
         self.out_queue = out_queue
         self.n_names = len(names)
         # keep unfinished item activations here:
@@ -92,16 +89,6 @@ class ActivationStorage:
         self.ordered = ordered
         self.return_index = return_index
         self.i = 0
-
-    def run(self):
-        while True:
-            inp = self.in_queue.get()
-            if inp is None:
-                break
-            self.add_item(*inp)
-
-    def finalize(self):
-        self.in_queue.put(None)
 
     def add_item(self, act_dict, item_ids, name):
         logger = logging.getLogger(__name__)
@@ -116,19 +103,24 @@ class ActivationStorage:
         logger.debug("dispatcher ran")
 
     def _dispatch_finished_items(self):
+        dispatched = set()
         for item_id in sorted(self.item_status.keys()):
             is_complete = len(self.item_status[item_id]) == self.n_names
             is_due = not self.ordered or (self.ordered and item_id <= self.i)
-            print("item id", item_id, is_complete, is_due)
+            # print("item id", item_id, is_complete, is_due)
             if is_complete and is_due:
-                acts = self.item_acts.pop(item_id)
-                print("acts", acts.shape)
+                # print(self.item_acts.keys())
+                acts = self.item_acts.pop(item_id, None)
+                # print("acts", acts)  # acts.shape)
                 if self.return_index:
                     item = (item_id, acts)
                 else:
                     item = acts
                 self.out_queue.put(item)
+                dispatched.add(item_id)
                 self.i += 1
+        for item in dispatched:
+            self.item_status.pop(item)
 
 
 class EmbedderPipeline:
@@ -139,19 +131,7 @@ class EmbedderPipeline:
             self.emb_by_key[emb.preprocess_key].append((name, emb))
         self.executor = cf.ProcessPoolExecutor(max_workers=2)
 
-    # def _embed(self, embedder, dataset, batch_size, name, storage):
-    #     dl = torch.utils.data.DataLoader(
-    #         dataset, batch_size=batch_size, drop_last=False
-    #     )
-    #     for act_dict, idx in embedder.embed_from_loader(dl):
-    #         print("embed", idx)
-    #         act_dict_avg = embedder.postprocess(act_dict, "average")
-    #         print("embed postprocessed", idx)
-    #         storage.add_item(act_dict_avg, idx, name)
-    #         print("post-processed item stored", idx)
-    #     print("embedder done", name)
-
-    def _embed(self, embedder, dataset, batch_size, name, storage_queue):
+    def _embed(self, embedder, dataset, batch_size, name, storage):
         dl = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, drop_last=False
         )
@@ -159,13 +139,25 @@ class EmbedderPipeline:
             # print("embed", idx)
             act_dict_avg = embedder.postprocess(act_dict, "average")
             # print("embed postprocessed", idx)
-            # storage.add_item(act_dict_avg, idx, name)
-            storage_queue.put((act_dict_avg, idx, name))
+            storage.add_item(act_dict_avg, idx, name)
         #     print("post-processed item stored", idx)
         # print("embedder done", name)
 
-    def _store(self, storage):
-        storage.run()
+    # def _embed(self, embedder, dataset, batch_size, name, storage_queue):
+    #     dl = torch.utils.data.DataLoader(
+    #         dataset, batch_size=batch_size, drop_last=False
+    #     )
+    #     for act_dict, idx in embedder.embed_from_loader(dl):
+    #         # print("embed", idx)
+    #         act_dict_avg = embedder.postprocess(act_dict, "average")
+    #         # print("embed postprocessed", idx)
+    #         # storage.add_item(act_dict_avg, idx, name)
+    #         storage_queue.put((act_dict_avg, idx, name))
+    #     #     print("post-processed item stored", idx)
+    #     # print("embedder done", name)
+
+    # def _store(self, storage):
+    #     storage.run()
 
     def _feed(self, items, q):
         for i, item in enumerate(items):
@@ -185,20 +177,19 @@ class EmbedderPipeline:
         batch_size = 3
         # todo set queue size relative to max_workers
         preprocess_q = queue.Queue(maxsize=10)
-        storage_q = queue.Queue()
         out_q = queue.Queue()
         datasets = {
             (name, emb): QueueDataset(name=name)
             for name, emb in self.embedders.items()
         }
         storage = ActivationStorage(
-            list(self.embedders.keys()), storage_q, out_q, ordered=ordered
+            list(self.embedders.keys()), out_q, ordered=ordered
         )
         with (
             # cf.ProcessPoolExecutor(max_workers=max_workers) as executor,
             cf.ThreadPoolExecutor(max_workers=max_workers) as executor,
             cf.ThreadPoolExecutor(
-                max_workers=len(self.embedders) + 2
+                max_workers=len(self.embedders) + 1
             ) as thread_exec,
         ):
             # start a future for a thread that sends work in through the queue
@@ -208,7 +199,7 @@ class EmbedderPipeline:
                 ): "FEEDER DONE"
             }
             embed_futures = []
-            storage_future = thread_exec.submit(self._store, storage)
+            # storage_future = thread_exec.submit(self._store, storage)
             for (name, embedder), dataset in datasets.items():
                 fut = thread_exec.submit(
                     # self._embed(embedder, dataset, emb_q)
@@ -217,7 +208,7 @@ class EmbedderPipeline:
                     dataset,
                     batch_size,
                     name,
-                    storage_q,
+                    storage,
                 )
                 embed_futures.append(fut)
             while futures:
@@ -267,21 +258,19 @@ class EmbedderPipeline:
                     for name, embedder in self.emb_by_key[preprocess_key]:
                         # print("adding preprocessed item", item, "to dataset")
                         datasets[(name, embedder)].add_item(audio_sr, item_ids)
-                        preprocess_q.task_done()
+                    # preprocess_q.task_done()
 
                 while True:
                     try:
                         yield out_q.get_nowait()
                     except queue.Empty:
                         break
-            preprocess_q.join()
-            print("Finalizing datasets; futures:", len(futures))
+            # preprocess_q.join()
+            # print("Finalizing datasets; futures:", len(futures))
             for dataset in datasets.values():
                 dataset.finalize()
             # print(embed_futures)
             cf.wait(embed_futures)
-            storage.finalize()
-            cf.wait((storage_future,))
             while not out_q.empty():
                 yield out_q.get()
 
