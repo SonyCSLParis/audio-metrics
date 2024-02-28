@@ -38,6 +38,25 @@ from .kid import (
 from .density_coverage import compute_density_coverage
 
 
+def save_embeddings(outfile, embeddings):
+    to_save = {}
+    for (model, layer), activations in embeddings.items():
+        if "/" in model:
+            raise Exception(
+                f'Saving names containing "/" is not supported: {model}'
+            )
+        if "/" in layer:
+            raise Exception(
+                f'Saving names containing "/" is not supported: {layer}'
+            )
+        # for name, data in mid.__dict__.items():
+        #     key = f"{model}/{layer}/{name}"
+        #     to_save[key] = data
+        key = f"{model}/{layer}/activations"
+        to_save[key] = activations
+    np.savez(outfile, **to_save)
+
+
 @dataclasses.dataclass()
 class MetricInputData:
     activations: np.ndarray

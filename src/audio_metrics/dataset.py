@@ -275,12 +275,20 @@ class Embedder:
         result = defaultdict(list)
         for layer_name, activations in activation_dict.items():
             if combine_mode == "concatenate":
+                # combine batch and time dims
                 acts = einops.rearrange(activations, "... d -> (...) d")
-                result[layer_name].append(acts)
-            else:
-                # print("was", activations.shape)
+                result[layer_name] = acts
+            elif combine_mode == "stack":
+                # keep batch and time dims
+                acts = einops.rearrange(activations, "b ... d -> b (...) d")
+                result[layer_name] = acts
+            elif combine_mode == "average":
+                # collapse time dim by mean
                 acts = einops.reduce(activations, "k l d -> k d", "mean")
                 result[layer_name] = acts
+            else:
+                msg = 'combine_mode must be one of ("concatenate", "stack", "average")'
+                raise NotImplementedError(msg)
         return result
 
     # def postprocess(self, activation_dict, win_dur, combine_mode="concatenate"):

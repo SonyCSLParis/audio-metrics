@@ -6,7 +6,6 @@ import queue
 import torch
 
 from audio_metrics.dataset import audio_slicer
-from audio_metrics import AudioMetrics
 
 
 class ActivationStorage:
@@ -66,19 +65,29 @@ class EmbedderPipeline:
             self.emb_by_key[emb.preprocess_key].append((name, emb))
         self.executor = cf.ProcessPoolExecutor(max_workers=2)
 
-    def _embed(self, embedder, dataset, batch_size, name, storage):
+    def _embed(
+        self, embedder, dataset, batch_size, name, storage, combine_mode
+    ):
         dl = torch.utils.data.DataLoader(
             dataset, batch_size=batch_size, drop_last=False
         )
         for act_dict, idx in embedder.embed_from_loader(dl):
-            act_dict_avg = embedder.postprocess(act_dict, "average")
-            storage.add_item(act_dict_avg, idx, name)
+            act_dict_joint = embedder.postprocess(act_dict, combine_mode)
+            storage.add_item(act_dict_joint, idx, name)
 
     def _feed(self, items, q):
         for i, item in enumerate(items):
             q.put((i, item))
 
-    def embed(self, data_iter, batch_size=3, ordered=True, max_workers=None):
+    def embed(
+        self,
+        data_iter,
+        batch_size=3,
+        ordered=True,
+        max_workers=None,
+        progress=None,
+        combine_mode="average",
+    ):
         """
         Embed waveforms provided by `data_iter`, and yield the embeddings.
 
@@ -94,6 +103,13 @@ class EmbedderPipeline:
             available.  Default: True.
 
         :param max_workers: Number of workers for the preprocessing pool
+
+        :param progress: A tqdm instance, which will be updated at each yielded
+            embedding.  Default: None
+
+        :param combine_mode: Whether multiple embeddings per window are combined
+            by averaging or by concatenation.  Possible values: {"average",
+            "concatenate")
         """
         # todo set queue size relative to max_workers
         preprocess_q = queue.Queue(maxsize=10)
@@ -121,7 +137,13 @@ class EmbedderPipeline:
             embed_futures = []
             for (name, embedder), dataset in datasets.items():
                 fut = thread_exec.submit(
-                    self._embed, embedder, dataset, batch_size, name, storage
+                    self._embed,
+                    embedder,
+                    dataset,
+                    batch_size,
+                    name,
+                    storage,
+                    combine_mode,
                 )
                 embed_futures.append(fut)
             while futures:
@@ -147,11 +169,17 @@ class EmbedderPipeline:
                 for future in done:
                     item = futures.pop(future)
                     if item == "FEEDER DONE":
+                        try:
+                            future.result()
+                        except Exception as exc:
+                            print("Exception in feeder:", exc)
                         continue
                     item_ids, preprocess_key = item
                     try:
                         audio_sr = future.result()
                     except Exception as exc:
+                        print("Exception in preprocessor:", exc)
+                        # TODO: don't raise but exit gracefully
                         raise exc
 
                     # pass preprocessed items on to the corresponding embedders
@@ -163,13 +191,23 @@ class EmbedderPipeline:
                 while True:
                     try:
                         yield out_q.get_nowait()
+                        if progress:
+                            progress.update()
                     except queue.Empty:
                         break
             for dataset in datasets.values():
                 dataset.finalize()
             cf.wait(embed_futures)
+
+            # get results to raise any exceptions that occurred in the embedder
+            # futures
+            for fut in embed_futures:
+                x = fut.result()
+
             while not out_q.empty():
                 yield out_q.get()
+                if progress:
+                    progress.update()
 
 
 class QueueDataset(torch.utils.data.IterableDataset):
