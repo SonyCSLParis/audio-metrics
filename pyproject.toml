@@ -1,30 +1,36 @@
-[build-system]
-requires = ["setuptools", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "audio_metrics"
-description = "Distribution-based audio metrics"
+version = "0.1.0"
+description = "Metrics to measure the quality of audio"
+authors = ["Maarten Grachten"]
 readme = "README.md"
-requires-python = ">=3.7"
-keywords = ["audio", "metrics", "fad", "density", "coverage"]
-# license = {text = "BSD 3-Clause License"}
-classifiers = [
-    "Programming Language :: Python :: 3",
-]
-dependencies = [
-	"numpy",
-	"prdc"
-]
-dynamic = ["version"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
-include = ["audio_metrics*"]  
+[tool.poetry.dependencies]
+# Common
+python = "^3.11"
+setuptools = "*"
+loguru = "^0.7.2"
+numpy = "^1.23.5"
+tqdm = "^4.66.2"
+torch = "^2.2.0"
+soundfile = "^0.12.1"
+appdirs = "^1.4.4"
+scikit-learn = "^1.3.1"
+einops = "^0.7.0"
+resampy = "^0.2.2"
+laion_clap = "^1.1.4"
+torchvision = "^0.17.1" # missing dependency for laion_clap
 
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 80
 
-[tool.mypy]
+[tool.ruff]
+line-length = 80
+
+[mypy]
 ignore_missing_imports = true
+
