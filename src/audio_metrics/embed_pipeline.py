@@ -193,7 +193,7 @@ class EmbedderPipeline:
                 while True:
                     try:
                         yield out_q.get_nowait()
-                        if progress:
+                        if progress is not None:
                             progress.update()
                     except queue.Empty:
                         break
@@ -208,7 +208,7 @@ class EmbedderPipeline:
 
             while not out_q.empty():
                 yield out_q.get()
-                if progress:
+                if progress is not None:
                     progress.update()
 
 

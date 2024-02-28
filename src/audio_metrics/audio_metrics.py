@@ -1,11 +1,8 @@
-import os
 from pathlib import Path
 from collections import defaultdict
 import dataclasses
 
 import sklearn.decomposition
-import einops
-from tqdm import tqdm
 import torch
 import numpy as np
 
@@ -14,14 +11,9 @@ from .fad import (
     mu_sigma_from_activations,
     frechet_distance,
 )
-from .kid import (
-    compute_kernel_distance,
-    KEY_METRIC_KID_MEAN,
-    KEY_METRIC_KID_STD,
-)
+from .kid import compute_kernel_distance
 
 
-# from .audio_metrics import MetricInputData
 @dataclasses.dataclass()
 class MetricInputData:
     activations: np.ndarray
@@ -223,47 +215,40 @@ class AudioMetrics:
     def save_background_statistics(self, outfile, ensure_radii=False):
         to_save = {}
         for (model, layer), mid in self.bg_data.items():
-            if "/" in model:
-                raise Exception(
-                    f'Saving names containing "/" is not supported: {model}'
-                )
-            if "/" in layer:
-                raise Exception(
-                    f'Saving names containing "/" is not supported: {layer}'
-                )
-            if ensure_radii:
-                # make sure radii are computed before we save (to be reused in
-                # future density/coverage computations)
-                mid.get_radii(self.k_neighbor)
+            AudioMetrics.check_name(model)
+            AudioMetrics.check_name(layer)
+            # if ensure_radii:
+            #     # make sure radii are computed before we save (to be reused in
+            #     # future density/coverage computations)
+            #     mid.get_radii(self.k_neighbor)
             for name, data in mid.__dict__.items():
                 key = f"{model}/{layer}/{name}"
                 to_save[key] = data
         np.savez(outfile, **to_save)
 
-    @classmethod
-    def save_embeddings_file(cls, embeddings, fp):
+    @staticmethod
+    def save_embeddings_file(embeddings, fp):
         to_save = {}
         for (model, layer), emb in embeddings.items():
-            if "/" in model:
-                raise Exception(
-                    f'Saving names containing "/" is not supported: {model}'
-                )
-            if "/" in layer:
-                raise Exception(
-                    f'Saving names containing "/" is not supported: {layer}'
-                )
-            # for name, data in mid.__dict__.items():
+            AudioMetrics.check_name(model)
+            AudioMetrics.check_name(layer)
             key = f"{model}/{layer}/activations"
             to_save[key] = emb
         np.savez(fp, **to_save)
 
-    @classmethod
-    def load_metric_input_data_from_file(cls, fp):
-        with np.load(fp) as data_dict:
-            return cls.load_metric_input_data_from_dict(data_dict)
+    @staticmethod
+    def check_name(name):
+        if "/" in name:
+            msg = f'Saving names containing "/" is not supported: {name}'
+            raise Exception(msg)
 
-    @classmethod
-    def load_metric_input_data_from_dict(cls, data_dict):
+    @staticmethod
+    def load_metric_input_data_from_file(fp):
+        with np.load(fp) as data_dict:
+            return AudioMetrics.load_metric_input_data_from_dict(data_dict)
+
+    @staticmethod
+    def load_metric_input_data_from_dict(data_dict):
         bg_items = defaultdict(dict)
         for name, data in data_dict.items():
             try:

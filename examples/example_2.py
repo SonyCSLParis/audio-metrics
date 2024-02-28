@@ -13,11 +13,12 @@ def random_audio_pair_generator(n_items, sr, audio_len):
 
 def main():
     dev = torch.device("cuda")
-    metric = AudioPromptAdherence(dev)
-
-    n_items = 300
+    n_items = 150
     sr = 48000
-    audio_len = 5 * sr
+    audio_len = 10 * sr
+    win_len = 5 * sr
+    metric = AudioPromptAdherence(dev, win_len)
+
     real_data = random_audio_pair_generator(n_items, sr, audio_len)
     fake_data = random_audio_pair_generator(n_items, sr, audio_len)
 

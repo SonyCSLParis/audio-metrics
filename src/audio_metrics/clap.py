@@ -1,40 +1,59 @@
 from pathlib import Path
 from collections import defaultdict
+import logging
+
+import appdirs
 import numpy as np
 import torch
-
 import laion_clap
 
-from audio_metrics.dataset import Embedder, load_audio, GeneratorDataset
+from audio_metrics.dataset import Embedder, GeneratorDataset
+from audio_metrics.get_url import download_and_save
 
 # CHECKPOINT = "/home/maarten/audio_metrics/music_audioset_epoch_15_esc_90.14.pt"
 
 # workaround an incompatibility in hugging face transformer def until laion_clap adapts to it.
-CHECKPOINT = "/home/maarten/audio_metrics/music_audioset_epoch_15_esc_90.14_no_textpos_ids.pt"
-
+# CHECKPOINT = "/home/maarten/audio_metrics/music_audioset_epoch_15_esc_90.14_no_textpos_ids.pt"
+PACKAGE_NAME = __name__.split(".", maxsplit=1)[0]
+CHECKPOINT_URL = "https://huggingface.co/lukewys/laion_clap/resolve/main/music_speech_audioset_epoch_15_esc_89.98.pt"
 SR = 48000
 MODEL = {}
 
-# import laion_clap
-# model = laion_clap.CLAP_Module(enable_fusion=False, amodel= 'HTSAT-base')
-# model.load_ckpt('checkpoint_path/checkpoint_name.pt')
+# def get_model_old(checkpoint, device):
+#     global MODEL
+#     key = (checkpoint, device)
+#     if key not in MODEL:
+#         MODEL[key] = laion_clap.CLAP_Module(
+#             enable_fusion=False, amodel="HTSAT-base"
+#         ).to(device)
+#         MODEL[key].load_ckpt(CHECKPOINT)
+#     return MODEL[key]
 
 
-def get_model(checkpoint, device):
+def get_model(device):
     global MODEL
-    key = (checkpoint, device)
+    cache_dir = Path(appdirs.user_cache_dir(PACKAGE_NAME))
+    name = CHECKPOINT_URL.rsplit("/", maxsplit=1)[-1]
+    fp = cache_dir / name
+    fn = fp.as_posix()
+    if not fp.exists():
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        log = logging.getLogger(__name__)
+        log.info(f"Downloading CLAP model from {CHECKPOINT_URL} to {fn}")
+        download_and_save(CHECKPOINT_URL, fn)
+    key = (fn, device)
     if key not in MODEL:
         MODEL[key] = laion_clap.CLAP_Module(
             enable_fusion=False, amodel="HTSAT-base"
         ).to(device)
-        MODEL[key].load_ckpt(CHECKPOINT)
+        MODEL[key].load_ckpt(fn)
     return MODEL[key]
 
 
 class CLAP(Embedder):
     def __init__(self, device):
         super().__init__(sr=SR, mono=True)
-        self.model = get_model(CHECKPOINT, device)
+        self.model = get_model(device)
         self.device = device
         self.activations = defaultdict(list)
         self.layers = [
