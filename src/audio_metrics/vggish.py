@@ -41,7 +41,6 @@ class VGGish(Embedder):
         self.model, sr = get_vggish_model(device)
         super().__init__(sr=sr, mono=True)
         self.names = ["last_feature_layer"]
-        # self._preprocess = self._spec(self._preprocess)
 
     def embed(self, items, same_size=False, batch_size=10):
         # items can be an iterable of audio filepaths, or of (audio, sr) pairs
@@ -54,16 +53,6 @@ class VGGish(Embedder):
                 mel_specs, self.model, batch_size, same_size
             )
         }
-
-    # def _spec(self, func):
-    #     def _preprocess(item):
-    #         audio, sr = func(item)
-    #         print("ja spec")
-    #         spec = self.model._preprocess(audio, sr)
-    #         print("jo spec")
-    #         return spec
-
-    #     return _preprocess
 
     def embed_from_loader(self, loader):
         with torch.no_grad():

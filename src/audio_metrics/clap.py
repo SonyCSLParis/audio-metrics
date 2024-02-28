@@ -1,6 +1,6 @@
 from pathlib import Path
 from collections import defaultdict
-import logging
+from loguru import logger
 
 import appdirs
 import numpy as np
@@ -30,6 +30,7 @@ MODEL = {}
 #     return MODEL[key]
 
 
+# @logger.catch
 def get_model(device):
     global MODEL
     cache_dir = Path(appdirs.user_cache_dir(PACKAGE_NAME))
@@ -38,9 +39,11 @@ def get_model(device):
     fn = fp.as_posix()
     if not fp.exists():
         cache_dir.mkdir(parents=True, exist_ok=True)
-        log = logging.getLogger(__name__)
-        log.info(f"Downloading CLAP model from {CHECKPOINT_URL} to {fn}")
-        download_and_save(CHECKPOINT_URL, fn)
+        logger.info(f"Downloading CLAP model from {CHECKPOINT_URL} to {fn}")
+        try:
+            download_and_save(CHECKPOINT_URL, fn)
+        except Exception as e:
+            raise Exception("Error downloading CLAP model") from e
     key = (fn, device)
     if key not in MODEL:
         MODEL[key] = laion_clap.CLAP_Module(
@@ -62,10 +65,6 @@ class CLAP(Embedder):
         ]
         self.out_label = "output"
         self.names = self.layers + [self.out_label]
-        # for layer in self.layers:
-        #     self.model.get_submodule(f"model.{layer}").register_forward_hook(
-        #         self._get_activation_hook(layer)
-        #     )
 
     def embed(self, items, same_size=False, batch_size=10):
         audio_sr_pairs = (self.preprocess(item) for item in items)
