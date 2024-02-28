@@ -3,6 +3,7 @@ from collections import defaultdict
 import concurrent.futures as cf
 import queue
 
+import numpy as np
 import torch
 
 from audio_metrics.dataset import audio_slicer
@@ -79,6 +80,9 @@ class EmbedderPipeline:
         for i, item in enumerate(items):
             q.put((i, item))
 
+    def embed_join(self, data_iter, **kwargs):
+        return join_embeddings(self.embed(data_iter, **kwargs))
+
     def embed(
         self,
         data_iter,
@@ -91,10 +95,8 @@ class EmbedderPipeline:
         """
         Embed waveforms provided by `data_iter`, and yield the embeddings.
 
-        :param data_iter: An iterator over pairs ((waveform, sr), identifier).
-            waveform should be 1d, and identifier can be anything that is
-            collatable by pytorch's default collate_fn.  It is returned as is
-            along with the embeddings.
+        :param data_iter: An iterator over pairs (waveform, sr).  waveform
+            should be 1d.
 
         :param batch_size: Batch size for computing embeddings (default 3)
 
@@ -235,6 +237,17 @@ class QueueDataset(torch.utils.data.IterableDataset):
 
     def __iter__(self):
         return self
+
+
+def join_embeddings(embeddings):
+    result = defaultdict(list)
+    for emb in embeddings:
+        for k, v in emb.items():
+            result[k].append(v)
+    for k, v in result.items():
+        vv = np.stack(v)
+        result[k] = vv
+    return result
 
 
 # # NOTE: not a drop in replacement for QueueDataset (need to check)
