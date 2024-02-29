@@ -72,7 +72,7 @@ def main():
     audio_len = 10 * sr
     win_len = 5 * sr
 
-    real_data = audio_pair_generator(n_items, sr, audio_len, matching=True)
+    real_data = audio_pair_generator(n_items, sr, audio_len, matching=False)
     fake_data_1 = audio_pair_generator(n_items, sr, audio_len, matching=True)
     fake_data_2 = audio_pair_generator(n_items, sr, audio_len, matching=False)
     # import soundfile as sf

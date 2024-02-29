@@ -37,22 +37,21 @@ def main():
 
     real_data_iter = random_audio_generator(n_items, sr, audio_len)
     fake_data_iter = random_audio_generator(n_items, sr, audio_len)
+    progress_real = tqdm(total=n_items, desc="real_embeddings")
+    progress_fake = tqdm(total=n_items, desc="fake_embeddings")
+
     real_embeddings = pipeline.embed_join(
-        real_data_iter,
-        **embed_kwargs,
-        progress=tqdm(total=n_items, desc="real_embeddings"),
+        real_data_iter, **embed_kwargs, progress=progress_real
     )
     fake_embeddings = pipeline.embed_join(
-        fake_data_iter,
-        **embed_kwargs,
-        progress=tqdm(total=n_items, desc="fake_embeddings"),
+        fake_data_iter, **embed_kwargs, progress=progress_fake
     )
 
     metrics = AudioMetrics(metrics=["fad", "kd"])
     metrics.set_background_data(real_embeddings)
     metrics.set_pca_projection(n_pca)
-    res = metrics.compare_to_background(fake_embeddings)
-    print(json.dumps(res, indent=2))
+    result = metrics.compare_to_background(fake_embeddings)
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

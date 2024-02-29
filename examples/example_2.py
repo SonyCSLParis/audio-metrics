@@ -25,8 +25,8 @@ def main():
     fake_data = random_audio_pair_generator(n_items, sr, audio_len)
 
     metric.set_background(real_data)
-    res = metric.compare_to_background(fake_data)
-    print(json.dumps(res, indent=2))
+    result = metric.compare_to_background(fake_data)
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
