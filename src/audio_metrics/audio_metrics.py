@@ -190,6 +190,7 @@ class AudioMetrics:
                 )
                 for kid_name, kid_val in kid_vals.items():
                     result[f"{kid_name}_{key_str}"] = kid_val
+
             result["n_real"] = len(real_data)
             result["n_fake"] = len(fake_data)
 
@@ -207,6 +208,7 @@ class AudioMetrics:
             # )
             # result[f"density_{key_str}"] = density
             # result[f"coverage_{key_str}"] = coverage
+        result = dict(sorted(result.items()))
 
         if return_data:
             return result, fake_data_dict
