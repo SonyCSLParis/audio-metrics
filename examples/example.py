@@ -31,7 +31,7 @@ def main():
         "max_workers": 10,
     }
     pipeline = EmbedderPipeline(embedders)
-    n_items = 9
+    n_items = 100
     sr = 48000
     audio_len = 5 * sr
 
