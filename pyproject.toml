@@ -18,8 +18,11 @@ appdirs = "^1.4.4"
 scikit-learn = "^1.3.1"
 einops = "^0.7.0"
 resampy = "^0.2.2"
-laion_clap = "^1.1.4"
+# need git version because pypi version has version-mismatch issue with
+# transformers package preventing checkpoint loading
+laion_clap = { git = "https://github.com/LAION-AI/CLAP.git" }
 torchvision = "^0.17.1" # missing dependency for laion_clap
+torchopenl3 = "^1.0.1"
 
 [build-system]
 requires = ["poetry-core"]
