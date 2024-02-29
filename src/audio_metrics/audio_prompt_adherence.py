@@ -90,8 +90,9 @@ class AudioPromptAdherence:
             "max_workers": 10,
         }
         self.pipeline = EmbedderPipeline(embedders)
-        self.good_metrics = AudioMetrics(metrics=["fad"])
-        self.bad_metrics = AudioMetrics(metrics=["fad"])
+        self.adh1_metrics = AudioMetrics(metrics=["fad"])
+        self.adh2_metrics = AudioMetrics(metrics=["fad"])
+        self.stem_metrics = AudioMetrics(metrics=["fad"])
         self.win_len = win_len
 
     def set_background(self, audio_pairs):
@@ -111,25 +112,34 @@ class AudioPromptAdherence:
                 desc="computing background embeddings",
             ),
         )
-        good_pairs = mix_pairs(audio_pairs)
-        good_pairs = maybe_slice_audio(good_pairs, self.win_len)
-        embeddings = self.pipeline.embed_join(good_pairs, **emb_kwargs)
-        del good_pairs
-        self.good_metrics.set_background_data(embeddings)
-        self.good_metrics.set_pca_projection(self.n_pca)
+        adh1_pairs = mix_pairs(audio_pairs)
+        adh1_pairs = maybe_slice_audio(adh1_pairs, self.win_len)
+        embeddings = self.pipeline.embed_join(adh1_pairs, **emb_kwargs)
+        del adh1_pairs
+        self.adh1_metrics.set_background_data(embeddings)
+        self.adh1_metrics.set_pca_projection(self.n_pca)
         del embeddings
-        bad_pairs = mix_pairs(misalign_pairs(audio_pairs))
-        bad_pairs = maybe_slice_audio(bad_pairs, self.win_len)
-        del audio_pairs
-        embeddings = self.pipeline.embed_join(bad_pairs, **emb_kwargs)
-        del bad_pairs
-        self.bad_metrics.set_background_data(embeddings)
-        self.bad_metrics.set_pca_projection(self.n_pca)
+        adh2_pairs = mix_pairs(misalign_pairs(audio_pairs))
+        adh2_pairs = maybe_slice_audio(adh2_pairs, self.win_len)
+        embeddings = self.pipeline.embed_join(adh2_pairs, **emb_kwargs)
+        del adh2_pairs
+        self.adh2_metrics.set_background_data(embeddings)
+        self.adh2_metrics.set_pca_projection(self.n_pca)
         del embeddings
 
+        stems_only = ((stem, sr) for _, stem, sr in audio_pairs)
+        stems_only = maybe_slice_audio(stems_only, self.win_len)
+        # del audio_pairs
+        embeddings = self.pipeline.embed_join(stems_only, **emb_kwargs)
+        del stems_only
+        del audio_pairs
+        self.stem_metrics.set_background_data(embeddings)
+        self.stem_metrics.set_pca_projection(self.n_pca)
+
     def compare_to_background(self, audio_pairs):
-        pairs = mix_pairs(audio_pairs)
-        pairs = maybe_slice_audio(pairs, self.win_len)
+        audio_pairs = list(audio_pairs)
+        mixed = mix_pairs(audio_pairs)
+        mixed = maybe_slice_audio(mixed, self.win_len)
         emb_kwargs = dict(
             self.embed_kwargs,
             progress=tqdm(
@@ -137,15 +147,21 @@ class AudioPromptAdherence:
                 desc="computing candidate embeddings",
             ),
         )
-        embeddings = self.pipeline.embed_join(pairs, **emb_kwargs)
-        good = self.good_metrics.compare_to_background(embeddings)
-        bad = self.bad_metrics.compare_to_background(embeddings)
+        mixed_embeddings = self.pipeline.embed_join(mixed, **emb_kwargs)
+        adh1 = self.adh1_metrics.compare_to_background(mixed_embeddings)
+        adh2 = self.adh2_metrics.compare_to_background(mixed_embeddings)
+        del mixed_embeddings
+        stems_only = ((stem, sr) for _, stem, sr in audio_pairs)
+        stems_only = maybe_slice_audio(stems_only, self.win_len)
+        stem_embeddings = self.pipeline.embed_join(stems_only, **emb_kwargs)
+        stem = self.stem_metrics.compare_to_background(stem_embeddings)
         key = "fad_clap_output"
-        score = (bad[key] - good[key]) / (bad[key] + good[key])
+        score = (adh2[key] - adh1[key]) / (adh2[key] + adh1[key])
         return {
             "audio_prompt_adherence": score,
-            "n_real": good["n_real"],
-            "n_fake": good["n_fake"],
+            "stem_fad_clap": stem[key],
+            "n_real": adh1["n_real"],
+            "n_fake": adh1["n_fake"],
         }
 
     def _check_minimum_data_size(self, n_items):

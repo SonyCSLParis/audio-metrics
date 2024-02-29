@@ -1,6 +1,8 @@
+import json
+
 import numpy as np
 import torch
-import json
+
 from audio_metrics import AudioPromptAdherence
 
 
