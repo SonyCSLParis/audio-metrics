@@ -1,14 +1,12 @@
 import random
 import numpy as np
 import torch
+import enum
 from tqdm import tqdm
 
 from audio_metrics import AudioMetrics
 from audio_metrics.embed_pipeline import EmbedderPipeline
-
-from audio_metrics.clap import CLAP
-from audio_metrics.vggish import VGGish
-from audio_metrics.openl3 import OpenL3
+from audio_metrics.kid import KEY_METRIC_KID_MEAN
 
 
 def mix_tracks(audio):
@@ -78,22 +76,77 @@ def maybe_slice_audio(audio_sr_pairs, win_len=None):
                 yield (win, sr)
 
 
+class Embedder(enum.Enum):
+    VGGISH: enum.auto()
+    OPENL3: enum.auto()
+    CLAP: enum.auto()
+
+
+class Distance(enum.Enum):
+    FAD: enum.auto()
+    MMD: enum.auto()
+
+
+Embedder = enum.Enum("Embedder", {k: k for k in ("vggish", "openl3", "clap")})
+Metric = enum.Enum("Metric", {k: k for k in ("fad", "mmd2")})
+
+
 class AudioPromptAdherence:
-    def __init__(self, device=None, win_len=None):
-        self.n_pca = 100
-        if device is None:
-            device = get_device()
-        embedders = {"clap": CLAP(device)}
+    def __init__(
+        self,
+        device: str | torch.device | None = None,
+        win_len: int | None = None,
+        n_pca: int | None = None,
+        embedder: str = Embedder.vggish,
+        metric: str = Metric.fad,
+    ):
+        self.n_pca = n_pca
+        embedders = {"emb": self._get_embedder(embedder, device)}
         self.embed_kwargs = {
             "combine_mode": "average",
             "batch_size": 10,
             "max_workers": 10,
         }
         self.pipeline = EmbedderPipeline(embedders)
-        self.adh1_metrics = AudioMetrics(metrics=["fad"])
-        self.adh2_metrics = AudioMetrics(metrics=["fad"])
-        self.stem_metrics = AudioMetrics(metrics=["fad"])
+        _metric, self.metric_key = self._get_metric(metric)
+        self.adh1_metrics = AudioMetrics(metrics=[_metric])
+        self.adh2_metrics = AudioMetrics(metrics=[_metric])
+        self.stem_metrics = AudioMetrics(metrics=[_metric])
         self.win_len = win_len
+
+        # hacky: build the key to get the metric value from the AuioMetrics results
+        self._key = "_".join(
+            [self.metric_key, "emb", embedders["emb"].names[0]]
+        )
+
+    def _get_metric(self, name):
+        metric = Metric(name)
+        # TODO: use enum in AudioMetrics as well, for now it uses strings
+        if metric == Metric.fad:
+            key = "fad"
+            return "fad", key
+        if metric == Metric.mmd2:
+            key = KEY_METRIC_KID_MEAN
+            return "kd", key
+        raise NotImplementedError(f"Unsupported metric {metric}")
+
+    def _get_embedder(self, name, device):
+        if device is None:
+            device = get_device()
+        emb = Embedder(name)
+        if emb == Embedder.vggish:
+            from audio_metrics.vggish import VGGish
+
+            return VGGish(device)
+        if emb == Embedder.openl3:
+            from audio_metrics.openl3 import OpenL3
+
+            return OpenL3(device)
+        if emb == Embedder.clap:
+            from audio_metrics.clap import CLAP
+
+            return CLAP(device, intermediate_layers=False)
+        raise NotImplementedError(f"Unsupported embedder {emb}")
 
     def set_background(self, audio_pairs):
         # NOTE: we load all audio into memory
@@ -155,11 +208,13 @@ class AudioPromptAdherence:
         stems_only = maybe_slice_audio(stems_only, self.win_len)
         stem_embeddings = self.pipeline.embed_join(stems_only, **emb_kwargs)
         stem = self.stem_metrics.compare_to_background(stem_embeddings)
-        key = "fad_clap_output"
-        score = (adh2[key] - adh1[key]) / (adh2[key] + adh1[key])
+        key = self._key
+        m_x_y = max(0, adh1[key])
+        m_xp_y = max(0, adh2[key])
+        score = (m_xp_y - m_x_y) / (m_xp_y + m_x_y)
         return {
             "audio_prompt_adherence": score,
-            "stem_fad_clap": stem[key],
+            "stem_distance": max(0, stem[key]),
             "n_real": adh1["n_real"],
             "n_fake": adh1["n_fake"],
         }

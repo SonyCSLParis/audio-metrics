@@ -54,15 +54,18 @@ def get_model(device):
 
 
 class CLAP(Embedder):
-    def __init__(self, device):
+    def __init__(self, device, intermediate_layers=True):
         super().__init__(sr=SR, mono=True)
         self.model = get_model(device)
         self.device = device
         self.activations = defaultdict(list)
-        self.layers = [
-            "audio_projection.0",
-            "audio_projection.2",
-        ]
+        if intermediate_layers:
+            self.layers = [
+                "audio_projection.0",
+                "audio_projection.2",
+            ]
+        else:
+            self.layers = []
         self.out_label = "output"
         self.names = self.layers + [self.out_label]
 

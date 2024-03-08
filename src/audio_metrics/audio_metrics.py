@@ -169,6 +169,7 @@ class AudioMetrics:
 
         for key, real_data in real_data_dict.items():
             fake_data = fake_data_dict[key]
+            key_str = "_".join(key)
             if "fad" in self.metrics:
                 try:
                     fad_value = frechet_distance(
@@ -180,7 +181,6 @@ class AudioMetrics:
                 except ValueError:
                     fad_value = np.nan
 
-                key_str = "_".join(key)
                 result[f"fad_{key_str}"] = fad_value
 
             if "kd" in self.metrics:
