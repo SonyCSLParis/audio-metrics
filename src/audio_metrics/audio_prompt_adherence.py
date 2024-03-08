@@ -4,11 +4,11 @@ import torch
 from tqdm import tqdm
 
 from audio_metrics import AudioMetrics
-from audio_metrics.clap import CLAP
 from audio_metrics.embed_pipeline import EmbedderPipeline
 
-# from audio_metrics.vggish import VGGish
-# from audio_metrics.openl3 import OpenL3
+from audio_metrics.clap import CLAP
+from audio_metrics.vggish import VGGish
+from audio_metrics.openl3 import OpenL3
 
 
 def mix_tracks(audio):
@@ -33,10 +33,10 @@ def mix_tracks(audio):
 
 
 def mix_pairs(pairs):
-    return [
+    return (
         (mix_tracks(np.column_stack((mix, stem))), sr)
         for mix, stem, sr in pairs
-    ]
+    )
 
 
 def misalign_pairs(pairs):
