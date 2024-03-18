@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 # Common
-python = "^3.11"
+python = "^3.10"
 setuptools = "*"
 loguru = "^0.7.2"
 numpy = "^1.23.5"
