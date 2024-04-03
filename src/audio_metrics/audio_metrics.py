@@ -14,6 +14,7 @@ from .fad import (
 from .kid import compute_kernel_distance
 from .density_coverage import compute_density_coverage
 
+
 @dataclasses.dataclass()
 class MetricInputData:
     activations: np.ndarray
@@ -78,7 +79,9 @@ class AudioMetrics:
 
     """
 
-    def __init__(self, background_data=None, metrics=["fad", "kd"], k_neighbor=2):
+    def __init__(
+        self, background_data=None, metrics=["fad", "kd", "dc"], k_neighbor=2
+    ):
         self.bg_data = background_data
         self.metrics = metrics
         self._pca_projectors = {}
@@ -193,23 +196,19 @@ class AudioMetrics:
                 for kid_name, kid_val in kid_vals.items():
                     result[f"{kid_name}_{key_str}"] = kid_val
 
+            if "dc" in self.metrics:
+                n_neighbors = min(
+                    result["n_real"], result["n_fake"], self.k_neighbor
+                )
+                density, coverage = compute_density_coverage(
+                    real_data, fake_data, n_neighbors
+                )
+                result[f"density_{key_str}"] = density
+                result[f"coverage_{key_str}"] = coverage
+
             result["n_real"] = len(real_data)
             result["n_fake"] = len(fake_data)
 
-            n_neighbors = min(
-                result["n_real"], result["n_fake"], self.k_neighbor
-            )
-            # print(
-            #     "nnei",
-            #     n_neighbors,
-            #     real_data.activations.shape,
-            #     fake_data.activations.shape,
-            # )
-            density, coverage = compute_density_coverage(
-                real_data, fake_data, n_neighbors
-            )
-            result[f"density_{key_str}"] = density
-            result[f"coverage_{key_str}"] = coverage
         result = dict(sorted(result.items()))
 
         if return_data:
@@ -225,7 +224,7 @@ class AudioMetrics:
                 # make sure radii are computed before we save (to be reused in
                 # future density/coverage computations)
                 mid.get_radii(self.k_neighbor)
-                
+
             for name, data in mid.__dict__.items():
                 key = f"{model}/{layer}/{name}"
                 to_save[key] = data
