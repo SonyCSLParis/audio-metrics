@@ -1,7 +1,6 @@
 import warnings
 import enum
-import random
-
+import warnings
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -52,7 +51,7 @@ def mix_pairs(pairs):
     )
 
 
-def misalign_pairs(pairs):
+def misalign(pairs):
     N = len(pairs)
     perm = np.random.permutation(N)
     for i in range(N):
@@ -104,7 +103,7 @@ class Distance(enum.Enum):
 
 
 Embedder = enum.Enum("Embedder", {k: k for k in ("vggish", "openl3", "clap")})
-Metric = enum.Enum("Metric", {k: k for k in ("fad", "mmd2")})
+Metric = enum.Enum("Metric", {k: k for k in ("fad", "mmd")})
 
 
 class AudioPromptAdherence:
@@ -125,15 +124,11 @@ class AudioPromptAdherence:
         }
         self.pipeline = EmbedderPipeline(embedders)
         _metric, self.metric_key = self._get_metric(metric)
-        self.adh1_metrics = AudioMetrics(metrics=[_metric])
-        self.adh2_metrics = AudioMetrics(metrics=[_metric])
-        self.stem_metrics = AudioMetrics(metrics=[_metric])
+        self.metrics_1 = AudioMetrics(metrics=[_metric])
+        self.metrics_2 = AudioMetrics(metrics=[_metric])
         self.win_dur = win_dur
-
         # hacky: build the key to get the metric value from the AuioMetrics results
-        self._key = "_".join(
-            [self.metric_key, "emb", embedders["emb"].names[0]]
-        )
+        self._key = "_".join([self.metric_key, "emb", embedders["emb"].names[0]])
 
     def _get_metric(self, name):
         metric = Metric(name)
@@ -141,7 +136,7 @@ class AudioPromptAdherence:
         if metric == Metric.fad:
             key = "fad"
             return "fad", key
-        if metric == Metric.mmd2:
+        if metric == Metric.mmd:
             key = KEY_METRIC_KID_MEAN
             return "kd", key
         raise NotImplementedError(f"Unsupported metric {metric}")
@@ -164,75 +159,49 @@ class AudioPromptAdherence:
             return CLAP(device, intermediate_layers=False)
         raise NotImplementedError(f"Unsupported embedder {emb}")
 
+    def _make_emb(self, audio_pairs, progress=None):
+        # early fusion
+        items = mix_pairs(audio_pairs)
+        items = maybe_slice_audio(items, self.win_dur)
+        return self.pipeline.embed_join(items, **self.embed_kwargs, progress=progress)
+
     def set_background(self, audio_pairs):
         # NOTE: we load all audio into memory
-        audio_pairs = list(audio_pairs)
-        n_items = len(audio_pairs)
+        pairs = list(audio_pairs)
+        n_items = len(pairs)
         if self.win_dur is None:
             self._check_minimum_data_size(n_items)
             total = 2 * n_items
         else:
             total = None
-
-        emb_kwargs = dict(
-            self.embed_kwargs,
-            progress=tqdm(
-                total=total,
-                desc="computing background embeddings",
-            ),
-        )
-        adh1_pairs = mix_pairs(audio_pairs)
-        adh1_pairs = maybe_slice_audio(adh1_pairs, self.win_dur)
-        embeddings = self.pipeline.embed_join(adh1_pairs, **emb_kwargs)
-        del adh1_pairs
-        self.adh1_metrics.set_background_data(embeddings)
-        self.adh1_metrics.set_pca_projection(self.n_pca)
-        del embeddings
-        adh2_pairs = mix_pairs(misalign_pairs(audio_pairs))
-        adh2_pairs = maybe_slice_audio(adh2_pairs, self.win_dur)
-        embeddings = self.pipeline.embed_join(adh2_pairs, **emb_kwargs)
-        del adh2_pairs
-        self.adh2_metrics.set_background_data(embeddings)
-        self.adh2_metrics.set_pca_projection(self.n_pca)
-        del embeddings
-
-        stems_only = ((stem, sr) for _, stem, sr in audio_pairs)
-        stems_only = maybe_slice_audio(stems_only, self.win_dur)
-        # del audio_pairs
-        embeddings = self.pipeline.embed_join(stems_only, **emb_kwargs)
-        del stems_only
-        del audio_pairs
-        self.stem_metrics.set_background_data(embeddings)
-        self.stem_metrics.set_pca_projection(self.n_pca)
+        prog = tqdm(total=total, desc="computing background embeddings")
+        self.metrics_1.set_background_data(self._make_emb(pairs, prog))
+        emb_2 = self._make_emb(misalign(pairs), prog)
+        self.metrics_2.set_background_data(emb_2)
+        self.metrics_1.set_pca_projection(self.n_pca)
+        self.metrics_2.set_pca_projection(self.n_pca)
+        # compare non-matching to matching and save distance value for APA computation
+        result = self.metrics_1.compare_to_background(emb_2)
+        self.m_x_xp = result[self._key]
 
     def compare_to_background(self, audio_pairs):
-        audio_pairs = list(audio_pairs)
-        mixed = mix_pairs(audio_pairs)
-        mixed = maybe_slice_audio(mixed, self.win_dur)
-        emb_kwargs = dict(
-            self.embed_kwargs,
-            progress=tqdm(
-                total=None,
-                desc="computing candidate embeddings",
-            ),
-        )
-        mixed_embeddings = self.pipeline.embed_join(mixed, **emb_kwargs)
-        adh1 = self.adh1_metrics.compare_to_background(mixed_embeddings)
-        adh2 = self.adh2_metrics.compare_to_background(mixed_embeddings)
-        del mixed_embeddings
-        stems_only = ((stem, sr) for _, stem, sr in audio_pairs)
-        stems_only = maybe_slice_audio(stems_only, self.win_dur)
-        stem_embeddings = self.pipeline.embed_join(stems_only, **emb_kwargs)
-        stem = self.stem_metrics.compare_to_background(stem_embeddings)
+        pairs = list(audio_pairs)
+        prog = tqdm(total=None, desc="computing candidate embeddings")
+        emb = self._make_emb(pairs, prog)
+        d1 = self.metrics_1.compare_to_background(emb)
+        d2 = self.metrics_2.compare_to_background(emb)
         key = self._key
-        m_x_y = max(0, adh1[key])
-        m_xp_y = max(0, adh2[key])
-        score = (m_xp_y - m_x_y) / (m_xp_y + m_x_y)
+        m_x_y = max(0, d1[key])
+        m_xp_y = max(0, d2[key])
+        # score = (m_xp_y - m_x_y) / (m_xp_y + m_x_y)
+        score = 1 / 2 + (m_xp_y - m_x_y) / (2 * self.m_x_xp)
+        # print(f"a={d1[key]:.3f} b={d2[key]:.3f} c={self.c_result[key]:.3f}")
+        if abs(m_x_y - m_xp_y) >= self.m_x_xp:
+            warnings.warn("Triangle inequality not satisfied")
         return {
             "audio_prompt_adherence": score,
-            "stem_distance": max(0, stem[key]),
-            "n_real": adh1["n_real"],
-            "n_fake": adh1["n_fake"],
+            "n_real": d1["n_real"],
+            "n_fake": d1["n_fake"],
         }
 
     def _check_minimum_data_size(self, n_items):
