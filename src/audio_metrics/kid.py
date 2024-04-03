@@ -21,7 +21,7 @@ KID_DEGREE = 3
 KID_GAMMA = None
 KID_COEF0 = 1
 # RBF kernel
-KID_SIGMA = 1.0
+KID_SIGMA = 10.0
 
 
 def mmd2(K_XX, K_XY, K_YY, unit_diagonal=False, mmd_est="unbiased"):
@@ -109,11 +109,11 @@ def kernel_mmd(features_1, features_2, kernel):
     k_11 = kernel(features_1, features_1)
     k_22 = kernel(features_2, features_2)
     k_12 = kernel(features_1, features_2)
-    return mmd2(k_11, k_12, k_22)
+    return max(0, mmd2(k_11, k_12, k_22, mmd_est="unbiased")) ** 0.5
 
 
 def kid_features_to_metric(features_1, features_2, **kwargs):
-    kernel_type = kwargs.get("kernel_type", "rbf")
+    kernel_type = kwargs.get("kernel_type", "polynomial")
     if kernel_type == "polynomial":
         kernel = partial(
             polynomial_kernel,
@@ -146,9 +146,7 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     verbose = kwargs.get("verbose", False)
 
     n_samples_1, n_samples_2 = len(features_1), len(features_2)
-    assert (
-        n_samples_2 and n_samples_2
-    ), "Cannot compute KID on empty features tensor"
+    assert n_samples_2 and n_samples_2, "Cannot compute KID on empty features tensor"
     n_samples = min(n_samples_1, n_samples_2)
     if kid_subset_size >= n_samples:
         new_ss = max(1, n_samples // 2)
