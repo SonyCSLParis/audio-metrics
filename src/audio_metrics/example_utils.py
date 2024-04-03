@@ -11,17 +11,19 @@ def make_signal(sr, audio_len, beat_rate, tone_freq):
     beat_period = int(sr // beat_rate)
     signal = np.zeros(audio_len).astype(np.float32)
     onset_period = beat_period // 10
+    tone_length = beat_period // 2
+    onset_length = onset_period // 2
+    tone_sig = np.sin(tone_freq * 2 * np.pi * np.arange(tone_length) / sr)
+    onset_sig = np.random.random(onset_length) - 0.5
     for start in range(0, audio_len, beat_period):
         end = min(start + beat_period // 2, audio_len)
         length = end - start
         # tone
-        signal[start:end] = np.sin(
-            tone_freq * 2 * np.pi * np.arange(length) / sr
-        )
-        # onset
+        signal[start:end] = tone_sig[:length]
         end = min(start + onset_period // 2, audio_len)
         length = end - start
-        signal[start:end] += np.random.random(length) - 0.5
+        # onset
+        signal[start:end] += onset_sig[:length]
     peak = np.max(np.abs(signal))
     signal *= 0.5 / peak
     return signal
@@ -84,9 +86,9 @@ def generate_audio_samples(audio_dir, n_items=100, sr=48000, audio_len=None):
     real_dir.mkdir(parents=True, exist_ok=True)
     fake_dir.mkdir(parents=True, exist_ok=True)
     for i, (mix, stem, sr) in enumerate(real_data):
-        fp = real_dir / f"sample_{i:02d}.flac"
+        fp = real_dir / f"sample_{i:02d}.wav"
         sf.write(fp, np.column_stack((mix, stem)), sr)
 
     for i, (mix, stem, sr) in enumerate(fake_data):
-        fp = fake_dir / f"sample_{i:02d}.flac"
+        fp = fake_dir / f"sample_{i:02d}.wav"
         sf.write(fp, np.column_stack((mix, stem)), sr)
