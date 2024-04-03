@@ -196,6 +196,9 @@ class AudioMetrics:
                 for kid_name, kid_val in kid_vals.items():
                     result[f"{kid_name}_{key_str}"] = kid_val
 
+            result["n_real"] = len(real_data)
+            result["n_fake"] = len(fake_data)
+
             if "dc" in self.metrics:
                 n_neighbors = min(
                     result["n_real"], result["n_fake"], self.k_neighbor
@@ -205,9 +208,6 @@ class AudioMetrics:
                 )
                 result[f"density_{key_str}"] = density
                 result[f"coverage_{key_str}"] = coverage
-
-            result["n_real"] = len(real_data)
-            result["n_fake"] = len(fake_data)
 
         result = dict(sorted(result.items()))
 
