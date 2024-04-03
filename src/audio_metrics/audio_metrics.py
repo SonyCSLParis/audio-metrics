@@ -73,6 +73,7 @@ class AudioMetrics:
     audio embeddings.  Currently supported metrics:
 
     * Fréchet Audio Distance (FAD)
+    * Kernel Distance (KD)
     * Density and Coverage
 
     """
