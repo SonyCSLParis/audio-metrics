@@ -1,7 +1,9 @@
+import warnings
+import enum
 import random
+
 import numpy as np
 import torch
-import enum
 from tqdm import tqdm
 import pyloudnorm as pyln
 
@@ -26,14 +28,20 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
 
     meter = pyln.Meter(sr)  # create BS.1770 meter
     s0, s1 = audio.T
-    l0 = meter.integrated_loudness(s0)
-    l1 = meter.integrated_loudness(s1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        l0 = meter.integrated_loudness(s0)
+        l1 = meter.integrated_loudness(s1)
 
-    # set the loudness of s1 w.r.t. that of s0
-    s1 = pyln.normalize.loudness(s1, l1, l0 + stem_db_red)
-    mix = s0 + s1
-    l2 = meter.integrated_loudness(mix)  # measure loudness
-    mix = pyln.normalize.loudness(mix, l2, out_db)
+        # set the loudness of s1 w.r.t. that of s0
+        s1 = pyln.normalize.loudness(s1, l1, l0 + stem_db_red)
+        mix = (s0 + s1) / 2
+        l2 = meter.integrated_loudness(mix)  # measure loudness
+        mix = pyln.normalize.loudness(mix, l2, out_db)
+    vmax = np.max(np.abs(mix))
+    if vmax > 1.0:
+        warnings.warn("Reducing gain to prevent clipping")
+        mix /= vmax
     return mix
 
 
