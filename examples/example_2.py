@@ -1,33 +1,32 @@
+from pathlib import Path
 import json
-
-import numpy as np
 import torch
-
-from audio_metrics import AudioPromptAdherence
-
-
-def random_audio_pair_generator(n_items, sr, audio_len):
-    for _ in range(n_items):
-        mix = np.random.random(audio_len).astype(np.float32) - 0.5
-        stem = np.random.random(audio_len).astype(np.float32) - 0.5
-        yield (mix, stem, sr)
+from audio_metrics import (
+    async_audio_loader,
+    multi_audio_slicer,
+    AudioPromptAdherence,
+)
+from audio_metrics.example_utils import generate_audio_samples
 
 
-def main():
-    dev = torch.device("cuda")
-    n_items = 150
-    sr = 48000
-    audio_len = 10 * sr
-    win_len = 5 * sr
-    metric = AudioPromptAdherence(dev, win_len)
+audio_dir = Path("audio_samples")
+win_dur = 5.0
+dev = torch.device("cuda")
 
-    real_data = random_audio_pair_generator(n_items, sr, audio_len)
-    fake_data = random_audio_pair_generator(n_items, sr, audio_len)
+print("generating 'real' and 'fake' audio samples")
+generate_audio_samples(audio_dir)
 
-    metric.set_background(real_data)
-    result = metric.compare_to_background(fake_data)
-    print(json.dumps(result, indent=2))
+# load audio samples from files in `audio_dir`
+real_items = async_audio_loader(audio_dir, audio_dir / "real", mono=False)
+fake_items = async_audio_loader(audio_dir, audio_dir / "fake", mono=False)
 
+# iterate over windows
+real_items = multi_audio_slicer(real_items, win_dur)
+fake_items = multi_audio_slicer(fake_items, win_dur)
 
-if __name__ == "__main__":
-    main()
+metrics = AudioPromptAdherence(
+    dev, win_dur, n_pca=100, embedder="clap", metric="mmd2"
+)
+metrics.set_background(real_items)
+result = metrics.compare_to_background(fake_items)
+print(json.dumps(result, indent=2))
