@@ -52,20 +52,28 @@ def load_audio(fp, sr=None, mono=True, dtype=None):
     return data, sr
 
 
-def _async_load_audio(item):
-    fp, sr = item
-    return load_audio(fp, sr=sr)
+class _audioloader:
+    def __init__(self, mono):
+        self.mono = mono
+
+    def __call__(self, item):
+        fp, sr = item
+        return load_audio(fp, sr=sr, mono=self.mono)
 
 
 def async_audio_loader(
-    audio_dir, recursive=True, num_workers=None, file_patterns=None, sr=None
+    audio_dir,
+    recursive=True,
+    num_workers=None,
+    file_patterns=None,
+    mono=True,
+    sr=None,
 ):
     items = audiofile_generator_with_sr(
         audio_dir, recursive, file_patterns, sr=sr
     )
-    yield from async_processor(
-        items, _async_load_audio, num_workers=num_workers
-    )
+    audio_loader = _audioloader(mono=mono)
+    yield from async_processor(items, audio_loader, num_workers=num_workers)
 
 
 def audio_slicer(item, win_dur, hop_dur=None):
@@ -74,7 +82,11 @@ def audio_slicer(item, win_dur, hop_dur=None):
     win_len = int(sr * win_dur)
     hop_len = win_len if hop_dur is None else int(sr * hop_dur)
     for i in range(0, N - win_len + 1, hop_len):
-        yield audio[i : i + win_len], sr
+        win = audio[i : i + win_len]
+        if win.ndim == 1:
+            yield win, sr
+        else:
+            yield tuple(item for item in win.T) + (sr,)
 
 
 def multi_audio_slicer(items, win_dur, hop_dur=None, drop_last=True):
