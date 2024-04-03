@@ -3,36 +3,43 @@ import numpy as np
 import torch
 import enum
 from tqdm import tqdm
+import pyloudnorm as pyln
 
 from audio_metrics import AudioMetrics
 from audio_metrics.embed_pipeline import EmbedderPipeline
 from audio_metrics.kid import KEY_METRIC_KID_MEAN
 
 
-def mix_tracks(audio):
-    """Mix channels preserving peak amplitude.
+def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
+    """Mix channels with fixed loudness relationship
 
     audio: samples x channels
 
     """
 
     assert len(audio.shape) == 2
-    # n_ch = audio.shape[1]
     if audio.shape[1] == 1:
         return audio[:, 0]
-    vmax_orig = np.abs(audio).max()
-    if vmax_orig <= 0:
+    vmax = np.abs(audio).max()
+    if vmax <= 0:
         return audio[:, 0]
-    mix = np.mean(audio, 1)
-    vmax_new = np.abs(mix).max()
-    gain = vmax_orig / vmax_new
-    mix *= gain
+
+    meter = pyln.Meter(sr)  # create BS.1770 meter
+    s0, s1 = audio.T
+    l0 = meter.integrated_loudness(s0)
+    l1 = meter.integrated_loudness(s1)
+
+    # set the loudness of s1 w.r.t. that of s0
+    s1 = pyln.normalize.loudness(s1, l1, l0 + stem_db_red)
+    mix = s0 + s1
+    l2 = meter.integrated_loudness(mix)  # measure loudness
+    mix = pyln.normalize.loudness(mix, l2, out_db)
     return mix
 
 
 def mix_pairs(pairs):
     return (
-        (mix_tracks(np.column_stack((mix, stem))), sr)
+        (mix_tracks_loudness(np.column_stack((mix, stem)), sr), sr)
         for mix, stem, sr in pairs
     )
 

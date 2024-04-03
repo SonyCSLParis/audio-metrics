@@ -24,6 +24,7 @@ laion_clap = { git = "https://github.com/LAION-AI/CLAP.git" }
 torchvision = "^0.17.1" # missing dependency for laion_clap
 torchopenl3 = "^1.0.1"
 prdc = "^0.2"
+pyloudnorm = "^0.1.1"
 
 [build-system]
 requires = ["poetry-core"]
