@@ -51,8 +51,8 @@ print("generating 'real' and 'fake' audio samples")
 generate_audio_samples(audio_dir)
 
 # load audio samples from files in `audio_dir`
-real_items = async_audio_loader(audio_dir, audio_dir / "real")
-fake_items = async_audio_loader(audio_dir, audio_dir / "fake")
+real_items = async_audio_loader(audio_dir / "real")
+fake_items = async_audio_loader(audio_dir / "fake")
 
 # iterate over windows
 real_items = multi_audio_slicer(real_items, win_dur)
@@ -80,23 +80,23 @@ Which will print the metrics (exact values may slightly vary):
 
 ```json
 {
-  "coverage_clap_audio_projection.0": 1.0,
-  "coverage_clap_audio_projection.2": 1.0,
-  "coverage_clap_output": 1.0,
-  "density_clap_audio_projection.0": 1.1675,
-  "density_clap_audio_projection.2": 1.13375,
-  "density_clap_output": 1.195,
-  "fad_clap_audio_projection.0": 4.68105554318754e-11,
-  "fad_clap_audio_projection.2": 4.666844688472338e-11,
-  "fad_clap_output": 4.277467269275803e-11,
-  "kernel_distance_mean_clap_audio_projection.0": 0.03798904296875001,
-  "kernel_distance_mean_clap_audio_projection.2": 0.0375376103515625,
-  "kernel_distance_mean_clap_output": 0.038380160156250044,
-  "kernel_distance_std_clap_audio_projection.0": 0.0037973875005004065,
-  "kernel_distance_std_clap_audio_projection.2": 0.0032739005375918514,
-  "kernel_distance_std_clap_output": 0.003321617550645439,
-  "n_fake": 400,
-  "n_real": 400
+  "coverage_clap_audio_projection.0": 0.675,
+  "coverage_clap_audio_projection.2": 0.44,
+  "coverage_clap_output": 0.49,
+  "density_clap_audio_projection.0": 1.2675,
+  "density_clap_audio_projection.2": 0.605,
+  "density_clap_output": 0.7525,
+  "fad_clap_audio_projection.0": 25.192331663033556,
+  "fad_clap_audio_projection.2": 33.02863890811378,
+  "fad_clap_output": 32.31293025087572,
+  "kernel_distance_mean_clap_audio_projection.0": 0.5756649634334309,
+  "kernel_distance_mean_clap_audio_projection.2": 0.7890714981174441,
+  "kernel_distance_mean_clap_output": 0.7467294878649637,
+  "kernel_distance_std_clap_audio_projection.0": 0.03337777531962964,
+  "kernel_distance_std_clap_audio_projection.2": 0.04380359012320949,
+  "kernel_distance_std_clap_output": 0.04377045813837937,
+  "n_fake": 200,
+  "n_real": 200
 }
 ```
 
@@ -127,15 +127,15 @@ print("generating 'real' and 'fake' audio samples")
 generate_audio_samples(audio_dir)
 
 # load audio samples from files in `audio_dir`
-real_items = async_audio_loader(audio_dir, audio_dir / "real", mono=False)
-fake_items = async_audio_loader(audio_dir, audio_dir / "fake", mono=False)
+real_items = async_audio_loader(audio_dir / "real", mono=False)
+fake_items = async_audio_loader(audio_dir / "fake", mono=False)
 
 # iterate over windows
 real_items = multi_audio_slicer(real_items, win_dur)
 fake_items = multi_audio_slicer(fake_items, win_dur)
 
 metrics = AudioPromptAdherence(
-    dev, win_dur, n_pca=100, embedder="clap", metric="mmd2"
+    dev, win_dur, n_pca=100, embedder="clap", metric="mmd"
 )
 metrics.set_background(real_items)
 result = metrics.compare_to_background(fake_items)
@@ -146,10 +146,9 @@ which will print something like this:
 
 ```json
 {
-  "audio_prompt_adherence": 0.7607011406305113,
-  "stem_distance": 0.03952705566406251,
-  "n_real": 400,
-  "n_fake": 400
+  "audio_prompt_adherence": 0.15253860533909092,
+  "n_real": 200,
+  "n_fake": 200
 }
 
 ```

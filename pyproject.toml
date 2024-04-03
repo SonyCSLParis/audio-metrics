@@ -31,10 +31,10 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.black]
-line-length = 80
+line-length = 90
 
 [tool.ruff]
-line-length = 80
+line-length = 90
 
 [mypy]
 ignore_missing_imports = true

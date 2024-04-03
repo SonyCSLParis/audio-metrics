@@ -4,7 +4,10 @@
 #   https://github.com/mbinkowski/MMD-GAN/blob/master/gan/compute_scores.py
 #   Distributed under BSD 3-Clause: https://github.com/mbinkowski/MMD-GAN/blob/master/LICENSE
 
+from functools import partial
+
 import numpy as np
+from scipy.spatial.distance import cdist
 import torch
 from tqdm import tqdm
 import logging
@@ -13,9 +16,12 @@ KEY_METRIC_KID_MEAN = "kernel_distance_mean"
 KEY_METRIC_KID_STD = "kernel_distance_std"
 KID_SUBSETS = 100
 KID_SUBSET_SIZE = 1000
+# Polynomial kernel
 KID_DEGREE = 3
 KID_GAMMA = None
 KID_COEF0 = 1
+# RBF kernel
+KID_SIGMA = 10.0
 
 
 def mmd2(K_XX, K_XY, K_YY, unit_diagonal=False, mmd_est="unbiased"):
@@ -66,6 +72,32 @@ def mmd2(K_XX, K_XY, K_YY, unit_diagonal=False, mmd_est="unbiased"):
     return mmd2
 
 
+def rbf_kernel(X, Y, sigma=1.0):
+    """
+    Compute the RBF (Gaussian) kernel between X and Y using scipy's cdist for
+    efficient distance computation.
+
+    Parameters:
+
+        - X: numpy array of shape (n_samples_X, n_features)
+
+        - Y: numpy array of shape (n_samples_Y, n_features)
+
+        - sigma: float, the width parameter of the RBF kernel.
+
+    Returns:
+
+        - kernel_matrix: numpy array of shape (n_samples_X, n_samples_Y)
+    """
+    # Compute the squared Euclidean distance using cdist
+    squared_dist = cdist(X, Y, "sqeuclidean")
+
+    # Compute the RBF kernel matrix
+    kernel_matrix = np.exp(-squared_dist / (2 * sigma**2))
+
+    return kernel_matrix
+
+
 def polynomial_kernel(X, Y, degree=3, gamma=None, coef0=1):
     if gamma is None:
         gamma = 1.0 / X.shape[1]
@@ -73,23 +105,37 @@ def polynomial_kernel(X, Y, degree=3, gamma=None, coef0=1):
     return K
 
 
-def polynomial_mmd(features_1, features_2, degree, gamma, coef0):
-    k_11 = polynomial_kernel(
-        features_1, features_1, degree=degree, gamma=gamma, coef0=coef0
-    )
-    k_22 = polynomial_kernel(
-        features_2, features_2, degree=degree, gamma=gamma, coef0=coef0
-    )
-    k_12 = polynomial_kernel(
-        features_1, features_2, degree=degree, gamma=gamma, coef0=coef0
-    )
-    # biased estimate avoids negative values of mmd2
-    return mmd2(k_11, k_12, k_22, mmd_est="biased")
+def kernel_mmd(features_1, features_2, kernel):
+    k_11 = kernel(features_1, features_1)
+    k_22 = kernel(features_2, features_2)
+    k_12 = kernel(features_1, features_2)
+    return max(0, mmd2(k_11, k_12, k_22, mmd_est="unbiased")) ** 0.5
 
 
 def kid_features_to_metric(features_1, features_2, **kwargs):
-    assert torch.is_tensor(features_1) and features_1.dim() == 2
-    assert torch.is_tensor(features_2) and features_2.dim() == 2
+    kernel_type = kwargs.get("kernel_type", "polynomial")
+    if kernel_type == "polynomial":
+        kernel = partial(
+            polynomial_kernel,
+            degree=kwargs.get("kid_degree", KID_DEGREE),
+            gamma=kwargs.get("kid_gamma", KID_GAMMA),
+            coef0=kwargs.get("kid_coef0", KID_COEF0),
+        )
+    elif kernel_type == "rbf":
+        kernel = partial(
+            rbf_kernel,
+            sigma=kwargs.get("kid_sigma", KID_SIGMA),
+        )
+    else:
+        raise NotImplementedError(f'Unknown kernel_type "{kernel_type}"')
+
+    if torch.is_tensor(features_1):
+        features_1 = features_1.cpu().numpy()
+    if torch.is_tensor(features_2):
+        features_2 = features_2.cpu().numpy()
+
+    assert features_1.ndim == 2
+    assert features_2.ndim == 2
     assert features_1.shape[1] == features_2.shape[1]
 
     # kid_subsets = get_kwarg("kid_subsets", kwargs)
@@ -100,9 +146,7 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     verbose = kwargs.get("verbose", False)
 
     n_samples_1, n_samples_2 = len(features_1), len(features_2)
-    assert (
-        n_samples_2 and n_samples_2
-    ), "Cannot compute KID on empty features tensor"
+    assert n_samples_2 and n_samples_2, "Cannot compute KID on empty features tensor"
     n_samples = min(n_samples_1, n_samples_2)
     if kid_subset_size >= n_samples:
         new_ss = max(1, n_samples // 2)
@@ -119,10 +163,6 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     #     f'input_2: {n_samples_2}). Consider using "kid_subset_size" kwarg or "--kid-subset-size" command line key to '
     #     f"proceed."
     # )
-
-    features_1 = features_1.cpu().numpy()
-    features_2 = features_2.cpu().numpy()
-
     mmds = np.zeros(kid_subsets)
     rng = np.random.default_rng(kwargs.get("rng_seed", 1234))
 
@@ -135,13 +175,7 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     ):
         f1 = features_1[rng.choice(n_samples_1, kid_subset_size, replace=False)]
         f2 = features_2[rng.choice(n_samples_2, kid_subset_size, replace=False)]
-        o = polynomial_mmd(
-            f1,
-            f2,
-            kwargs.get("kid_degree", KID_DEGREE),
-            kwargs.get("kid_gamma", KID_GAMMA),
-            kwargs.get("kid_coef0", KID_COEF0),
-        )
+        o = kernel_mmd(f1, f2, kernel)
         mmds[i] = o
 
     out = {
