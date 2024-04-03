@@ -153,7 +153,7 @@ class AudioPromptAdherence:
         # NOTE: we load all audio into memory
         audio_pairs = list(audio_pairs)
         n_items = len(audio_pairs)
-        if self.win_len is None:
+        if self.win_dur is None:
             self._check_minimum_data_size(n_items)
             total = 2 * n_items
         else:
@@ -167,14 +167,14 @@ class AudioPromptAdherence:
             ),
         )
         adh1_pairs = mix_pairs(audio_pairs)
-        adh1_pairs = maybe_slice_audio(adh1_pairs, self.win_len)
+        adh1_pairs = maybe_slice_audio(adh1_pairs, self.win_dur)
         embeddings = self.pipeline.embed_join(adh1_pairs, **emb_kwargs)
         del adh1_pairs
         self.adh1_metrics.set_background_data(embeddings)
         self.adh1_metrics.set_pca_projection(self.n_pca)
         del embeddings
         adh2_pairs = mix_pairs(misalign_pairs(audio_pairs))
-        adh2_pairs = maybe_slice_audio(adh2_pairs, self.win_len)
+        adh2_pairs = maybe_slice_audio(adh2_pairs, self.win_dur)
         embeddings = self.pipeline.embed_join(adh2_pairs, **emb_kwargs)
         del adh2_pairs
         self.adh2_metrics.set_background_data(embeddings)
@@ -182,7 +182,7 @@ class AudioPromptAdherence:
         del embeddings
 
         stems_only = ((stem, sr) for _, stem, sr in audio_pairs)
-        stems_only = maybe_slice_audio(stems_only, self.win_len)
+        stems_only = maybe_slice_audio(stems_only, self.win_dur)
         # del audio_pairs
         embeddings = self.pipeline.embed_join(stems_only, **emb_kwargs)
         del stems_only
@@ -193,7 +193,7 @@ class AudioPromptAdherence:
     def compare_to_background(self, audio_pairs):
         audio_pairs = list(audio_pairs)
         mixed = mix_pairs(audio_pairs)
-        mixed = maybe_slice_audio(mixed, self.win_len)
+        mixed = maybe_slice_audio(mixed, self.win_dur)
         emb_kwargs = dict(
             self.embed_kwargs,
             progress=tqdm(
@@ -206,7 +206,7 @@ class AudioPromptAdherence:
         adh2 = self.adh2_metrics.compare_to_background(mixed_embeddings)
         del mixed_embeddings
         stems_only = ((stem, sr) for _, stem, sr in audio_pairs)
-        stems_only = maybe_slice_audio(stems_only, self.win_len)
+        stems_only = maybe_slice_audio(stems_only, self.win_dur)
         stem_embeddings = self.pipeline.embed_join(stems_only, **emb_kwargs)
         stem = self.stem_metrics.compare_to_background(stem_embeddings)
         key = self._key
