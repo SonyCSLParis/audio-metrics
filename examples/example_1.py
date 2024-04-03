@@ -20,8 +20,8 @@ print("generating 'real' and 'fake' audio samples")
 generate_audio_samples(audio_dir)
 
 # load audio samples from files in `audio_dir`
-real_items = async_audio_loader(audio_dir, audio_dir / "real")
-fake_items = async_audio_loader(audio_dir, audio_dir / "fake")
+real_items = async_audio_loader(audio_dir / "real")
+fake_items = async_audio_loader(audio_dir / "fake")
 
 # iterate over windows
 real_items = multi_audio_slicer(real_items, win_dur)
