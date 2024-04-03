@@ -83,7 +83,8 @@ def polynomial_mmd(features_1, features_2, degree, gamma, coef0):
     k_12 = polynomial_kernel(
         features_1, features_2, degree=degree, gamma=gamma, coef0=coef0
     )
-    return mmd2(k_11, k_12, k_22)
+    # biased estimate avoids negative values of mmd2
+    return mmd2(k_11, k_12, k_22, mmd_est="biased")
 
 
 def kid_features_to_metric(features_1, features_2, **kwargs):
