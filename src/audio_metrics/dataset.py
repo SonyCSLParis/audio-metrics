@@ -25,13 +25,17 @@ def file_generator(path, recursive, patterns):
             yield item
 
 
-def audiofile_generator_with_sr(path, recursive, file_patterns=None, sr=None):
-    """Yield each audio file found in `path`, together with `sr`"""
+def audiofile_generator(path, recursive, file_patterns=None):
+    """Yield each audio file found in `path`"""
     if not file_patterns:
         file_patterns = AUDIO_FILE_PATTERNS
     for item in file_generator(path, recursive, file_patterns):
-        # vggish preprocessor needs samplerate as second arg (even if it isn't
-        # used when the first arg is a file path)
+        yield item.as_posix()
+
+
+def audiofile_generator_with_sr(path, recursive, file_patterns=None, sr=None):
+    """Yield each audio file found in `path`, together with `sr`"""
+    for item in audiofile_generator(path, recursive, file_patterns):
         yield (os.fspath(item), sr)
 
 
@@ -48,26 +52,6 @@ def load_audio(fp, sr=None, mono=True, dtype=None):
     return data, sr
 
 
-# def load_audio_ffmpeg(
-#     fp: Path, sr: Optional[int] = None, mono: bool = False, timeout: Optional[float] = None
-# ) -> np.ndarray:
-#     cmd = ["ffmpeg", "-i", Path(fp).as_posix()]
-#     if sr is not None:
-#         cmd.extend(["-ar", f"{sr}"])
-#     if mono:
-#         cmd.extend(["-ac", "1"])
-#     cmd.extend(["-f", "f32le", "-acodec", "pcm_f32le", "-"])
-
-#     with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
-#         try:
-#             (stdout, stderr) = proc.communicate(timeout=timeout)
-#         except subprocess.TimeoutExpired:
-#             raise Exception("audio timeout error")
-#         if proc.returncode != 0:
-#             raise Exception(f"ffmpeg audio loading error {stderr.decode('utf-8')}")
-#         return np.frombuffer(stdout, dtype=np.float32)
-
-
 def _async_load_audio(item):
     fp, sr = item
     return load_audio(fp, sr=sr)
@@ -82,22 +66,6 @@ def async_audio_loader(
     yield from async_processor(
         items, _async_load_audio, num_workers=num_workers
     )
-
-
-def audio_slicer_old(items, win_dur, hop_dur=None, drop_last=True):
-    if not drop_last:
-        raise NotImplementedError
-    for audio, sr in items:
-        win_len = int(sr * win_dur)
-        N = len(audio)
-        if hop_dur is None:
-            hop_len = win_len
-        else:
-            hop_len = int(sr * hop_dur)
-        for i in range(0, N - win_len + 1, hop_len):
-            start = i
-            end = start + win_len
-            yield audio[start:end], sr
 
 
 def audio_slicer(item, win_dur, hop_dur=None):
@@ -137,16 +105,6 @@ def preprocess_items(items, preprocessor):
         result = preprocessor(*item)
         # result = result.new_empty(result.shape).normal_()
         yield result
-
-
-def audiofile_generator(path, recursive, file_patterns=None):
-    """Yield each audio file found in `path`"""
-    if not file_patterns:
-        file_patterns = AUDIO_FILE_PATTERNS
-    for item in file_generator(path, recursive, file_patterns):
-        # vggish preprocessor needs samplerate as second arg (even if it isn't
-        # used when the first arg is a file path)
-        yield item.as_posix()
 
 
 def _push_tasks(items, executor, preprocessor, queue):
@@ -288,34 +246,3 @@ class Embedder:
                 msg = 'combine_mode must be one of ("concatenate", "stack", "average")'
                 raise NotImplementedError(msg)
         return result
-
-    # def postprocess(self, activation_dict, win_dur, combine_mode="concatenate"):
-    #     result = defaultdict(list)
-    #     for layer_name, activations in activation_dict.items():
-    #         if win_dur is None:
-    #             # activations: list of 2D arrays
-    #             # print(
-    #             #     f"{name}, {layer_name}, len={len(activations)}",
-    #             #     [x.shape for x in activations],
-    #             # )
-    #             if combine_mode == "concatenate":
-    #                 result[layer_name].extend(activations)
-    #             else:
-    #                 acts = [
-    #                     einops.reduce(act, "k d -> d", "mean")
-    #                     for act in activations
-    #                 ]
-    #                 acts = einops.rearrange(acts, "k d -> k d")
-
-    #                 result[layer_name].append(acts)
-    #         else:
-    #             # 3D array
-    #             # print(
-    #             #     f"{name: <10s} / {layer_name: <30s}, shape={activations.shape}",
-    #             # )
-    #             if combine_mode == "concatenate":
-    #                 acts = einops.rearrange(activations, "... d -> (...) d")
-    #             else:
-    #                 acts = einops.reduce(activations, "k l d -> k d", "mean")
-    #             result[layer_name].append(acts)
-    #     return result

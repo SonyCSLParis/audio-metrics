@@ -64,11 +64,12 @@ def windowed_view(arr, window_size, hop_size=None):
         i += hop_size
 
 
-def maybe_slice_audio(audio_sr_pairs, win_len=None):
-    if win_len is None:
+def maybe_slice_audio(audio_sr_pairs, win_dur=None):
+    if win_dur is None:
         yield from audio_sr_pairs
         return
     for audio, sr in audio_sr_pairs:
+        win_len = int(sr * win_dur)
         if len(audio) <= win_len:
             yield (audio, sr)
         else:
@@ -95,7 +96,7 @@ class AudioPromptAdherence:
     def __init__(
         self,
         device: str | torch.device | None = None,
-        win_len: int | None = None,
+        win_dur: float | None = None,
         n_pca: int | None = None,
         embedder: str = Embedder.vggish,
         metric: str = Metric.fad,
@@ -112,7 +113,7 @@ class AudioPromptAdherence:
         self.adh1_metrics = AudioMetrics(metrics=[_metric])
         self.adh2_metrics = AudioMetrics(metrics=[_metric])
         self.stem_metrics = AudioMetrics(metrics=[_metric])
-        self.win_len = win_len
+        self.win_dur = win_dur
 
         # hacky: build the key to get the metric value from the AuioMetrics results
         self._key = "_".join(
