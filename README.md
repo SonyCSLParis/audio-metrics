@@ -29,6 +29,7 @@ The following example computes FAD and Kernel Distance for a (unrealistically
 small) set of audio samples:
 
 ```python
+from pathlib import Path
 import json
 import torch
 from audio_metrics import (
@@ -37,77 +38,121 @@ from audio_metrics import (
     EmbedderPipeline,
     AudioMetrics,
     CLAP,
-    VGGish,
 )
+from audio_metrics.example_utils import generate_audio_samples
 
 
-audio_dir = "audio_samples"
-win_dur = 1.0
-hop_dur = 0.1
-n_pca = 16
+audio_dir = Path("audio_samples")
+win_dur = 5.0
+n_pca = 64
 dev = torch.device("cuda")
 
-# load audio samples from files in `audio_dir`
-items = list(async_audio_loader(audio_dir))
+print("generating 'real' and 'fake' audio samples")
+generate_audio_samples(audio_dir)
 
-# split into "real" and "fake"
-real_items = items[: len(items) // 2]
-fake_items = items[len(items) // 2 :]
+# load audio samples from files in `audio_dir`
+real_items = async_audio_loader(audio_dir, audio_dir / "real")
+fake_items = async_audio_loader(audio_dir, audio_dir / "fake")
 
 # iterate over windows
-real_items = multi_audio_slicer(real_items, win_dur, hop_dur)
-fake_items = multi_audio_slicer(fake_items, win_dur, hop_dur)
+real_items = multi_audio_slicer(real_items, win_dur)
+fake_items = multi_audio_slicer(fake_items, win_dur)
 
-# create the embeddings
+print("creating embedder")
 embedder = EmbedderPipeline({"clap": CLAP(dev)})
+print("computing 'real' embeddings")
 real_embeddings = embedder.embed_join(real_items)
+print("computing 'fake' embeddings")
 fake_embeddings = embedder.embed_join(fake_items)
 
 # set the background data for the metrics
 # use PCA projection of embeddings without whitening
 metrics = AudioMetrics()
 metrics.set_background_data(real_embeddings)
-metrics.set_pca_projection(n_pca, whiten=False)
+metrics.set_pca_projection(n_pca, whiten=True)
 
-# compare "real" to "fake" data
+print("comparing 'real' to 'fake' data")
 result = metrics.compare_to_background(fake_embeddings)
 print(json.dumps(result, indent=2))
 ```
 
-Which will print:
+Which will print the metrics (exact values may slightly vary):
 
 ```json
 {
-  "fad_clap_audio_projection.0": 19.225023903605987,
-  "fad_clap_audio_projection.2": 7.9856999641986075,
-  "fad_clap_output": 0.11684167390293426,
-  "kernel_distance_mean_clap_audio_projection.0": 4.33607215213849,
-  "kernel_distance_mean_clap_audio_projection.2": 1.1579099677492803,
-  "kernel_distance_mean_clap_output": 0.011475965446770518,
-  "kernel_distance_std_clap_audio_projection.0": 0.4230402206366779,
-  "kernel_distance_std_clap_audio_projection.2": 0.10131857193842961,
-  "kernel_distance_std_clap_output": 0.0011241097288160584,
-  "n_fake": 455,
-  "n_real": 455
+  "coverage_clap_audio_projection.0": 1.0,
+  "coverage_clap_audio_projection.2": 1.0,
+  "coverage_clap_output": 1.0,
+  "density_clap_audio_projection.0": 1.1675,
+  "density_clap_audio_projection.2": 1.13375,
+  "density_clap_output": 1.195,
+  "fad_clap_audio_projection.0": 4.68105554318754e-11,
+  "fad_clap_audio_projection.2": 4.666844688472338e-11,
+  "fad_clap_output": 4.277467269275803e-11,
+  "kernel_distance_mean_clap_audio_projection.0": 0.03798904296875001,
+  "kernel_distance_mean_clap_audio_projection.2": 0.0375376103515625,
+  "kernel_distance_mean_clap_output": 0.038380160156250044,
+  "kernel_distance_std_clap_audio_projection.0": 0.0037973875005004065,
+  "kernel_distance_std_clap_audio_projection.2": 0.0032739005375918514,
+  "kernel_distance_std_clap_output": 0.003321617550645439,
+  "n_fake": 400,
+  "n_real": 400
 }
-```						
-
+```
 
 ## Usage: Audio Prompt Adherence
 
 The Audio Prompt Adherence metric takes pairs of audio samples (mix, and
 accompaniment, respectively), and computes how well mixes and accompaniments fit
-together, given a background set of (mix,accompaniment) pairs.
+together, given a background set of (mix,accompaniment) pairs. The following
+example shows how to compute the Audio Prompt Adherence metric:
 
 ```python
-from audio_metrics import AudioPromptAdherence
+from pathlib import Path
+import json
+import torch
+from audio_metrics import (
+    async_audio_loader,
+    multi_audio_slicer,
+    AudioPromptAdherence,
+)
+from audio_metrics.example_utils import generate_audio_samples
+
+
+audio_dir = Path("audio_samples")
 win_dur = 5.0
 dev = torch.device("cuda")
-metric = AudioPromptAdherence(dev, win_dur)
-metric.set_background(real_data)
 
+print("generating 'real' and 'fake' audio samples")
+generate_audio_samples(audio_dir)
+
+# load audio samples from files in `audio_dir`
+real_items = async_audio_loader(audio_dir, audio_dir / "real", mono=False)
+fake_items = async_audio_loader(audio_dir, audio_dir / "fake", mono=False)
+
+# iterate over windows
+real_items = multi_audio_slicer(real_items, win_dur)
+fake_items = multi_audio_slicer(fake_items, win_dur)
+
+metrics = AudioPromptAdherence(
+    dev, win_dur, n_pca=100, embedder="clap", metric="mmd2"
+)
+metrics.set_background(real_items)
+result = metrics.compare_to_background(fake_items)
+print(json.dumps(result, indent=2))
 ```
 
+which will print something like this:
+
+```json
+{
+  "audio_prompt_adherence": 0.7607011406305113,
+  "stem_distance": 0.03952705566406251,
+  "n_real": 400,
+  "n_fake": 400
+}
+
+```
 
 ## Citation
 
