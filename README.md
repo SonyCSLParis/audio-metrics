@@ -46,9 +46,14 @@ pip install .
 ```
 
 
-## Usage: Computing FAD/Kernel Distance 
+## Usage
 
-The following example computes FAD and Kernel Distance for a (unrealistically
+The following examples demonstrate the use of the package. Both examples are
+also included under the `./examples` directory.
+
+### Computing FAD/Kernel Distance 
+
+The following code computes FAD and Kernel Distance for a (unrealistically
 small) set of audio samples:
 
 ```python
@@ -123,7 +128,7 @@ Which will print the metrics (exact values may slightly vary):
 }
 ```
 
-## Usage: Audio Prompt Adherence
+### Audio Prompt Adherence
 
 The Audio Prompt Adherence metric takes pairs of audio samples (mix, and
 accompaniment, respectively), and computes how well mixes and accompaniments fit
