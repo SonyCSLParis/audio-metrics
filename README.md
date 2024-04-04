@@ -1,17 +1,40 @@
 # Audio Metrics
 
-This repository contains a python package to compute distribution-based metrics
-for audio data using embeddings. 
+This repository contains a python package to compute distribution-based quality
+measures for audio data using embeddings, with a focus on music.
 
-* Fréchet Distance (see https://arxiv.org/abs/1812.08466)
-* Kernel Distance/Maximum Mean Discrepancy (see https://arxiv.org/abs/1812.08466)
-* Density and Coverage (see https://arxiv.org/abs/2002.09797)
-* Audio Prompt Adherence https://arxiv.org/abs/2404.00775
+* Fréchet Distance (see https://arxiv.org/abs/1812.08466 )
 
-The metrics use the publicly available pretrained VGGish model (trained on audio
-event classification) to compute embeddings (see
-https://arxiv.org/abs/1609.09430). In particular, it uses the 128-dimensional
-embeddings from the last feature layer before the classification layer.
+* Kernel Distance/Maximum Mean Discrepancy (see https://arxiv.org/abs/1812.08466 )
+
+* Density and Coverage (see https://arxiv.org/abs/2002.09797 )
+
+* Audio Prompt Adherence (see https://arxiv.org/abs/2404.00775 )
+
+The measures have in common that they compare a **set** of candidate audio
+tracks against a **set** of reference tracks, rather than evaluating individual
+tracks, and they all work on **embedding** representations of audio, obtained
+from models pretrained on tasks like audio classification.
+
+The first two measures are typically used to measure audio quality (i.e. the
+naturalness of the sound, and the absence of acoustic artifacts). Density and
+Coverage explicitly measure how well the candidate set coincides with the
+reference set by comparing the embedding manifolds.
+
+The Audio Prompt Adherence measures operates on sets whose elements are
+**pairs** of audio tracks, typically a **mix** and an **accompaniment**, and
+quantifies how well the accompaniment fits to the mix.
+ 
+The measures can be combined with embeddings from any of the following models:
+
+* VGGish - https://arxiv.org/abs/1609.09430 Trained on audio event
+  classification. 128-dimensional embeddings from the last feature layer before
+  the classification layer.
+
+* OpenL3 - https://github.com/marl/openl3 Trained on music
+
+* Laion CLAP - https://github.com/LAION-AI/CLAP Trained on Music; Embeddings
+  from the last three layers (512, 512, and 128-dimensional)
 
 
 ## Installation
