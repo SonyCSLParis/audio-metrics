@@ -21,25 +21,34 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
     assert len(audio.shape) == 2
     if audio.shape[1] == 1:
         return audio[:, 0]
-    vmax = np.abs(audio).max()
-    if vmax <= 0:
-        return audio.mean(-1)
+    vmax = np.abs(audio).max(0)
+    eps = 1e-5
+    silent = vmax < eps
+    if np.all(silent):
+        warnings.warn("Both channels silent")
+        return audio[:, 0]
 
     meter = pyln.Meter(sr)  # create BS.1770 meter
-    s0, s1 = audio.T
+    if np.any(silent):
+        warnings.warn("One channel silent")
+        mix = audio[:, ~silent][:, 0]
+    else:
+        with warnings.catch_warnings():
+            s0, s1 = audio.T
+            warnings.simplefilter("ignore")
+            l0 = meter.integrated_loudness(s0)
+            l1 = meter.integrated_loudness(s1)
+            # set the loudness of s1 w.r.t. that of s0
+            s1 = pyln.normalize.loudness(s1, l1, l0 + stem_db_red)
+            mix = s0 + s1
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        l0 = meter.integrated_loudness(s0)
-        l1 = meter.integrated_loudness(s1)
-
-        # set the loudness of s1 w.r.t. that of s0
-        s1 = pyln.normalize.loudness(s1, l1, l0 + stem_db_red)
-        mix = (s0 + s1) / 2
-        l2 = meter.integrated_loudness(mix)  # measure loudness
-        mix = pyln.normalize.loudness(mix, l2, out_db)
+        l_mix = meter.integrated_loudness(mix)  # measure loudness
+        mix = pyln.normalize.loudness(mix, l_mix, out_db)
+    l_mix = meter.integrated_loudness(mix)  # measure loudness
     vmax = np.max(np.abs(mix))
     if vmax > 1.0:
-        warnings.warn("Reducing gain to prevent clipping")
+        warnings.warn(f"Reducing gain to prevent clipping ({vmax:.2f})")
         mix /= vmax
     return mix
 
