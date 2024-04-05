@@ -112,10 +112,12 @@ class AudioPromptAdherence:
         device: str | torch.device | None = None,
         win_dur: float | None = None,
         n_pca: int | None = None,
+        pca_whiten: bool = True,
         embedder: str = Embedder.vggish,
         metric: str = Metric.fad,
     ):
         self.n_pca = n_pca
+        self.pca_whiten = pca_whiten
         embedders = {"emb": self._get_embedder(embedder, device)}
         self.embed_kwargs = {
             "combine_mode": "average",
@@ -178,8 +180,8 @@ class AudioPromptAdherence:
         self.metrics_1.set_background_data(self._make_emb(pairs, prog))
         emb_2 = self._make_emb(misalign(pairs), prog)
         self.metrics_2.set_background_data(emb_2)
-        self.metrics_1.set_pca_projection(self.n_pca)
-        self.metrics_2.set_pca_projection(self.n_pca)
+        self.metrics_1.set_pca_projection(self.n_pca, self.pca_whiten)
+        self.metrics_2.set_pca_projection(self.n_pca, self.pca_whiten)
         # compare non-matching to matching and save distance value for APA computation
         result = self.metrics_1.compare_to_background(emb_2)
         self.m_x_xp = result[self._key]
