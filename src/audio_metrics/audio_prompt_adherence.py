@@ -23,7 +23,7 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
         return audio[:, 0]
     vmax = np.abs(audio).max()
     if vmax <= 0:
-        return audio[:, 0]
+        return audio.mean(-1)
 
     meter = pyln.Meter(sr)  # create BS.1770 meter
     s0, s1 = audio.T
