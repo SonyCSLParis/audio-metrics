@@ -39,9 +39,7 @@ class MetricInputData:
         key = f"radii_{k_neighbor}"
         radii = self.__dict__.get(key)
         if radii is None:
-            radii = prdc.compute_nearest_neighbour_distances(
-                self.activations, k_neighbor
-            )
+            radii = prdc.compute_nearest_neighbour_distances(self.activations, k_neighbor)
             self.__dict__[key] = radii
         return radii
 
@@ -79,9 +77,7 @@ class AudioMetrics:
 
     """
 
-    def __init__(
-        self, background_data=None, metrics=["fad", "kd", "dc"], k_neighbor=2
-    ):
+    def __init__(self, background_data=None, metrics=["fad", "kd", "dc"], k_neighbor=2):
         self.bg_data = background_data
         self.metrics = metrics
         self._pca_projectors = {}
@@ -116,9 +112,7 @@ class AudioMetrics:
             projector = sklearn.decomposition.PCA(
                 n_components=self._pca_n_components, whiten=self._pca_whiten
             )
-            result[key] = MetricInputData(
-                projector.fit_transform(data.activations)
-            )
+            result[key] = MetricInputData(projector.fit_transform(data.activations))
             self._pca_projectors[key] = projector
         return result
 
@@ -200,9 +194,7 @@ class AudioMetrics:
             result["n_fake"] = len(fake_data)
 
             if "dc" in self.metrics:
-                n_neighbors = min(
-                    result["n_real"], result["n_fake"], self.k_neighbor
-                )
+                n_neighbors = min(result["n_real"], result["n_fake"], self.k_neighbor)
                 density, coverage = compute_density_coverage(
                     real_data, fake_data, n_neighbors
                 )
@@ -214,31 +206,6 @@ class AudioMetrics:
         if return_data:
             return result, fake_data_dict
         return result
-
-    def save_background_statistics(self, outfile, ensure_radii=False):
-        to_save = {}
-        for (model, layer), mid in self.bg_data.items():
-            AudioMetrics.check_name(model)
-            AudioMetrics.check_name(layer)
-            if ensure_radii:
-                # make sure radii are computed before we save (to be reused in
-                # future density/coverage computations)
-                mid.get_radii(self.k_neighbor)
-
-            for name, data in mid.__dict__.items():
-                key = f"{model}/{layer}/{name}"
-                to_save[key] = data
-        np.savez(outfile, **to_save)
-
-    @staticmethod
-    def save_embeddings_file(embeddings, fp):
-        to_save = {}
-        for (model, layer), emb in embeddings.items():
-            AudioMetrics.check_name(model)
-            AudioMetrics.check_name(layer)
-            key = f"{model}/{layer}/activations"
-            to_save[key] = emb
-        np.savez(fp, **to_save)
 
     @staticmethod
     def check_name(name):
@@ -268,18 +235,44 @@ class AudioMetrics:
             bg_data[key] = MetricInputData.from_dict(val)
         return bg_data
 
+    def get_serializable_background(self, ensure_radii=False):
+        """Return background as a dict that can be passed to `np.savez`"""
+        to_save = {}
+        for (model, layer), mid in self.bg_data.items():
+            AudioMetrics.check_name(model)
+            AudioMetrics.check_name(layer)
+            if ensure_radii:
+                # make sure radii are computed before we save (to be reused in
+                # future density/coverage computations)
+                mid.get_radii(self.k_neighbor)
+
+            for name, data in mid.__dict__.items():
+                key = f"{model}/{layer}/{name}"
+                to_save[key] = data
+        return to_save
+
+    def save_background_statistics(self, outfile, ensure_radii=False):
+        to_save = self.get_serializable_background(ensure_radii)
+        np.savez(outfile, **to_save)
+
+    @staticmethod
+    def save_embeddings_file(embeddings, fp):
+        to_save = {}
+        for (model, layer), emb in embeddings.items():
+            AudioMetrics.check_name(model)
+            AudioMetrics.check_name(layer)
+            key = f"{model}/{layer}/activations"
+            to_save[key] = emb
+        np.savez(fp, **to_save)
+
 
 def save_embeddings(outfile, embeddings):
     to_save = {}
     for (model, layer), activations in embeddings.items():
         if "/" in model:
-            raise Exception(
-                f'Saving names containing "/" is not supported: {model}'
-            )
+            raise Exception(f'Saving names containing "/" is not supported: {model}')
         if "/" in layer:
-            raise Exception(
-                f'Saving names containing "/" is not supported: {layer}'
-            )
+            raise Exception(f'Saving names containing "/" is not supported: {layer}')
         # for name, data in mid.__dict__.items():
         #     key = f"{model}/{layer}/{name}"
         #     to_save[key] = data

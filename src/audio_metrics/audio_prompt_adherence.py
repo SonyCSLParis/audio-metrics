@@ -1,4 +1,5 @@
 import warnings
+from pathlib import Path
 import enum
 import warnings
 import numpy as np
@@ -140,6 +141,29 @@ class AudioPromptAdherence:
         self.win_dur = win_dur
         # hacky: build the key to get the metric value from the AuioMetrics results
         self._key = "_".join([self.metric_key, "emb", embedders["emb"].names[0]])
+
+    def save_state(self, fp):
+        d1 = self.metrics_1.get_serializable_background()
+        d2 = self.metrics_2.get_serializable_background()
+        joint = {}
+        for k, v in d1.items():
+            joint["metrics_1/" + k] = v
+        for k, v in d2.items():
+            joint["metrics_2/" + k] = v
+        np.savez(fp, **joint)
+
+    def load_state(self, fp):
+        joint = np.load(Path(fp).as_posix())
+        prefix1 = "metrics_1/"
+        prefix2 = "metrics_2/"
+        d1 = {
+            k.removeprefix(prefix1): v for k, v in joint.items() if k.startswith(prefix1)
+        }
+        d2 = {
+            k.removeprefix(prefix2): v for k, v in joint.items() if k.startswith(prefix2)
+        }
+        self.metrics_1.load_metric_input_data_from_dict(d1)
+        self.metrics_2.load_metric_input_data_from_dict(d2)
 
     def _get_metric(self, name):
         metric = Metric(name)
