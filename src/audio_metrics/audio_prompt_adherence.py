@@ -1,7 +1,7 @@
 import warnings
 from pathlib import Path
+import pickle
 import enum
-import warnings
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -101,15 +101,15 @@ def maybe_slice_audio(audio_sr_pairs, win_dur=None):
                 yield (win, sr)
 
 
-class Embedder(enum.Enum):
-    VGGISH: enum.auto()
-    OPENL3: enum.auto()
-    CLAP: enum.auto()
+# class Embedder(enum.Enum):
+#     VGGISH: enum.auto()
+#     OPENL3: enum.auto()
+#     CLAP: enum.auto()
 
 
-class Distance(enum.Enum):
-    FAD: enum.auto()
-    MMD: enum.auto()
+# class Distance(enum.Enum):
+#     FAD: enum.auto()
+#     MMD: enum.auto()
 
 
 Embedder = enum.Enum("Embedder", {k: k for k in ("vggish", "openl3", "clap")})
@@ -138,22 +138,26 @@ class AudioPromptAdherence:
         _metric, self.metric_key = self._get_metric(metric)
         self.metrics_1 = AudioMetrics(metrics=[_metric])
         self.metrics_2 = AudioMetrics(metrics=[_metric])
+        self.m_x_xp = None
         self.win_dur = win_dur
         # hacky: build the key to get the metric value from the AuioMetrics results
         self._key = "_".join([self.metric_key, "emb", embedders["emb"].names[0]])
 
     def save_state(self, fp):
-        d1 = self.metrics_1.get_serializable_background()
-        d2 = self.metrics_2.get_serializable_background()
         joint = {}
+        d1 = self.metrics_1.__getstate__()
+        d2 = self.metrics_2.__getstate__()
         for k, v in d1.items():
             joint["metrics_1/" + k] = v
         for k, v in d2.items():
             joint["metrics_2/" + k] = v
-        np.savez(fp, **joint)
+        joint["m_x_xp"] = self.m_x_xp
+        with open(fp, "wb") as f:
+            pickle.dump(joint, f)
 
     def load_state(self, fp):
-        joint = np.load(Path(fp).as_posix())
+        with open(fp, "rb") as f:
+            joint = pickle.load(f)
         prefix1 = "metrics_1/"
         prefix2 = "metrics_2/"
         d1 = {
@@ -162,8 +166,9 @@ class AudioPromptAdherence:
         d2 = {
             k.removeprefix(prefix2): v for k, v in joint.items() if k.startswith(prefix2)
         }
-        self.metrics_1.load_metric_input_data_from_dict(d1)
-        self.metrics_2.load_metric_input_data_from_dict(d2)
+        self.metrics_1.__setstate__(d1)
+        self.metrics_2.__setstate__(d2)
+        self.m_x_xp = joint["m_x_xp"]
 
     def _get_metric(self, name):
         metric = Metric(name)

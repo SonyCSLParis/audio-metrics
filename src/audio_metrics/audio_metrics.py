@@ -82,9 +82,15 @@ class AudioMetrics:
         self.metrics = metrics
         self._pca_projectors = {}
         self._pca_n_components = None
-        self._pca_n_whiten = None
+        self._pca_whiten = None
         self._pca_bg_data = None
         self.k_neighbor = k_neighbor
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        # for key in self.__dict__.keys():
+        #     if key in state:
+        #         setattr(self, key, state[key])
 
     def set_background_data(self, source):
         self.bg_data = self.load_metric_input_data(source)
@@ -166,6 +172,8 @@ class AudioMetrics:
         else:
             real_data_dict = self.bg_data
 
+        print("real keys", sorted(real_data_dict.keys()))
+        print("fake keys", sorted(fake_data_dict.keys()))
         for key, real_data in real_data_dict.items():
             fake_data = fake_data_dict[key]
             key_str = "_".join(key)
@@ -237,6 +245,8 @@ class AudioMetrics:
 
     def get_serializable_background(self, ensure_radii=False):
         """Return background as a dict that can be passed to `np.savez`"""
+        if self.bg_data is None:
+            return None
         to_save = {}
         for (model, layer), mid in self.bg_data.items():
             AudioMetrics.check_name(model)
@@ -253,6 +263,8 @@ class AudioMetrics:
 
     def save_background_statistics(self, outfile, ensure_radii=False):
         to_save = self.get_serializable_background(ensure_radii)
+        if to_save is None:
+            return
         np.savez(outfile, **to_save)
 
     @staticmethod
