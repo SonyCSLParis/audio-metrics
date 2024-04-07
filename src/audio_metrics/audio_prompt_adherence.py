@@ -234,8 +234,9 @@ class AudioPromptAdherence:
         m_x_y = max(0, d1[key])
         m_xp_y = max(0, d2[key])
         # score = (m_xp_y - m_x_y) / (m_xp_y + m_x_y)
-        score = 1 / 2 + (m_xp_y - m_x_y) / (2 * self.m_x_xp)
-        # print(f"a={d1[key]:.3f} b={d2[key]:.3f} c={self.c_result[key]:.3f}")
+        # score = 1 / 2 + (m_xp_y - m_x_y) / (2 * self.m_x_xp)
+        score = max(0, (m_xp_y - m_x_y) / self.m_x_xp)
+
         if abs(m_x_y - m_xp_y) >= self.m_x_xp:
             warnings.warn("Triangle inequality not satisfied")
         return {
