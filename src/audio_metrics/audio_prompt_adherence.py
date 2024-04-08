@@ -101,17 +101,6 @@ def maybe_slice_audio(audio_sr_pairs, win_dur=None):
                 yield (win, sr)
 
 
-# class Embedder(enum.Enum):
-#     VGGISH: enum.auto()
-#     OPENL3: enum.auto()
-#     CLAP: enum.auto()
-
-
-# class Distance(enum.Enum):
-#     FAD: enum.auto()
-#     MMD: enum.auto()
-
-
 Embedder = enum.Enum("Embedder", {k: k for k in ("vggish", "openl3", "clap")})
 Metric = enum.Enum("Metric", {k: k for k in ("fad", "mmd")})
 
