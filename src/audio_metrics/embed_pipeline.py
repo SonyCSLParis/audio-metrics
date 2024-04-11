@@ -2,6 +2,7 @@
 from collections import defaultdict
 import concurrent.futures as cf
 import queue
+import traceback
 
 import numpy as np
 import torch
@@ -66,12 +67,8 @@ class EmbedderPipeline:
             self.emb_by_key[emb.preprocess_key].append((name, emb))
         self.executor = cf.ProcessPoolExecutor(max_workers=2)
 
-    def _embed(
-        self, embedder, dataset, batch_size, name, storage, combine_mode
-    ):
-        dl = torch.utils.data.DataLoader(
-            dataset, batch_size=batch_size, drop_last=False
-        )
+    def _embed(self, embedder, dataset, batch_size, name, storage, combine_mode):
+        dl = torch.utils.data.DataLoader(dataset, batch_size=batch_size, drop_last=False)
         for act_dict, idx in embedder.embed_from_loader(dl):
             act_dict_joint = embedder.postprocess(act_dict, combine_mode)
             storage.add_item(act_dict_joint, idx, name)
@@ -117,24 +114,17 @@ class EmbedderPipeline:
         preprocess_q = queue.Queue(maxsize=10)
         out_q = queue.Queue()
         datasets = {
-            (name, emb): QueueDataset(name=name)
-            for name, emb in self.embedders.items()
+            (name, emb): QueueDataset(name=name) for name, emb in self.embedders.items()
         }
-        storage = ActivationStorage(
-            list(self.embedders.keys()), out_q, ordered=ordered
-        )
+        storage = ActivationStorage(list(self.embedders.keys()), out_q, ordered=ordered)
         with (
             # cf.ProcessPoolExecutor(max_workers=max_workers) as executor,
             cf.ThreadPoolExecutor(max_workers=max_workers) as executor,
-            cf.ThreadPoolExecutor(
-                max_workers=len(self.embedders) + 1
-            ) as thread_exec,
+            cf.ThreadPoolExecutor(max_workers=len(self.embedders) + 1) as thread_exec,
         ):
             # start a future for a thread that sends work in through the queue
             futures = {
-                thread_exec.submit(
-                    self._feed, data_iter, preprocess_q
-                ): "FEEDER DONE"
+                thread_exec.submit(self._feed, data_iter, preprocess_q): "FEEDER DONE"
             }
             embed_futures = []
             for (name, embedder), dataset in datasets.items():
@@ -150,9 +140,7 @@ class EmbedderPipeline:
                 embed_futures.append(fut)
             while futures:
                 # check for status of the futures that are currently working
-                done, _ = cf.wait(
-                    futures, timeout=0.25, return_when=cf.FIRST_COMPLETED
-                )
+                done, _ = cf.wait(futures, timeout=0.25, return_when=cf.FIRST_COMPLETED)
                 # if there are any items to be preprocessed, pass them on to the
                 # preprocessors
                 while not preprocess_q.empty():
@@ -175,6 +163,8 @@ class EmbedderPipeline:
                             future.result()
                         except Exception as exc:
                             print("Exception in feeder:", exc)
+                            traceback.print_exc()
+
                         continue
                     item_ids, preprocess_key = item
                     try:
@@ -186,9 +176,7 @@ class EmbedderPipeline:
 
                     # pass preprocessed items on to the corresponding embedders
                     for name, embedder in self.emb_by_key[preprocess_key]:
-                        datasets[(name, embedder)].add_item(
-                            (audio_sr[0], item_ids)
-                        )
+                        datasets[(name, embedder)].add_item((audio_sr[0], item_ids))
 
                 while True:
                     try:
