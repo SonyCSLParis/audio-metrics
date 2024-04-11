@@ -6,10 +6,79 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import pyloudnorm as pyln
+from cylimiter import Limiter
 
 from audio_metrics import AudioMetrics
 from audio_metrics.embed_pipeline import EmbedderPipeline
 from audio_metrics.kid import KEY_METRIC_KID_MEAN
+
+
+def mix_tracks_peak_preserve(audio, sr):
+    """Mix channels as as, and normalize to peak amplitude of the original waveforms
+
+    audio: samples x channels
+
+    """
+    assert len(audio.shape) == 2
+    # n_ch = audio.shape[1]
+    if audio.shape[1] == 1:
+        return audio[:, 0]
+    vmax_orig = np.abs(audio).max()
+    eps = 1e-5
+    if vmax_orig <= eps:
+        return audio[:, 0]
+    mix = np.mean(audio, 1)
+    vmax_new = np.abs(mix).max()
+    gain = vmax_orig / vmax_new
+    mix *= gain
+    return mix
+
+
+def mix_tracks_peak_normalize(audio, sr, stem_db_red=0.0, out_db=0.0):
+    """Mix by-peak normalizing channels, and then peak normalizing the mix.
+
+    audio: samples x channels
+
+    """
+    # gain = np.power(10.0, target/20.0) / current_peak
+    out_gain = np.power(10.0, out_db / 20.0)
+    stem_gain = np.power(10.0, stem_db_red / 20.0)
+    assert len(audio.shape) == 2
+    # n_ch = audio.shape[1]
+    if audio.shape[1] == 1:
+        mix = audio[:, 0]
+    else:
+        peaks = np.abs(audio).max(0, keepdims=True)
+        peaks[0, 1] *= stem_gain
+        mix = (audio / peaks).sum(1)
+
+    mix *= out_gain / np.abs(mix).max()
+    return mix
+
+
+def mix_preserve_loudness(audio, sr):
+    # audio: nsamples x 2
+    meter = pyln.Meter(sr)  # create BS.1770 meter
+    s0, s1 = audio.T
+    s2 = s0 + s1
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        l0 = meter.integrated_loudness(s0)
+        l1 = meter.integrated_loudness(s1)
+        l2 = meter.integrated_loudness(s2)
+
+        l_trg = max(l0, l1)
+        if not np.isinf(l_trg) and not np.isinf(l2):
+            s2 = pyln.normalize.loudness(s2, l2, l_trg)
+
+    vmax = np.max(np.abs(s2))
+    if vmax > 1.0:
+        warnings.warn(f"Reducing gain (peak amp: {vmax:.2f})")
+        limiter = Limiter()
+        s2 = limiter.apply(s2)
+
+    return s2
 
 
 def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
@@ -40,17 +109,26 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
             l0 = meter.integrated_loudness(s0)
             l1 = meter.integrated_loudness(s1)
             # set the loudness of s1 w.r.t. that of s0
-            s1 = pyln.normalize.loudness(s1, l1, l0 + stem_db_red)
+            l1_trg = l0 + stem_db_red
+            if not np.isinf(l1) and not np.isinf(l1_trg):
+                s1 = pyln.normalize.loudness(s1, l1, l1_trg)
             mix = s0 + s1
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         l_mix = meter.integrated_loudness(mix)  # measure loudness
-        mix = pyln.normalize.loudness(mix, l_mix, out_db)
-    l_mix = meter.integrated_loudness(mix)  # measure loudness
+        if not np.isinf(l_mix) and not np.isinf(out_db):
+            mix = pyln.normalize.loudness(mix, l_mix, out_db)
+    l_mix_check = meter.integrated_loudness(mix)  # measure loudness
     vmax = np.max(np.abs(mix))
     if vmax > 1.0:
-        warnings.warn(f"Reducing gain to prevent clipping ({vmax:.2f})")
-        mix /= vmax
+        # warnings.warn(f"Reducing gain to prevent clipping ({vmax:.2f})")
+        limiter = Limiter()
+        mix = limiter.apply(mix)
+
+    if np.any(np.isnan(mix)):
+        print(f"NaN with vmax={vmax}")
+        print(f"l_mix={l_mix} l_mix_check={l_mix_check} l_out={out_db}")
+        print(f"l0={l0} l1={l1}")
     return mix
 
 
@@ -113,11 +191,12 @@ class AudioPromptAdherence:
         n_pca: int | None = None,
         pca_whiten: bool = True,
         embedder: str = Embedder.vggish,
+        layer: str | None = None,
         metric: str = Metric.fad,
     ):
         self.n_pca = n_pca
         self.pca_whiten = pca_whiten
-        embedders = {"emb": self._get_embedder(embedder, device)}
+        embedders = {"emb": self._get_embedder(embedder, layer=layer, device=device)}
         self.embed_kwargs = {
             "combine_mode": "average",
             "batch_size": 10,
@@ -130,7 +209,8 @@ class AudioPromptAdherence:
         self.m_x_xp = None
         self.win_dur = win_dur
         # hacky: build the key to get the metric value from the AuioMetrics results
-        self._key = "_".join([self.metric_key, "emb", embedders["emb"].names[0]])
+        self.layer = layer or embedders["emb"].names[0]
+        self._key = "_".join([self.metric_key, "emb", self.layer])
 
     def save_state(self, fp):
         joint = {}
@@ -170,7 +250,7 @@ class AudioPromptAdherence:
             return "kd", key
         raise NotImplementedError(f"Unsupported metric {metric}")
 
-    def _get_embedder(self, name, device):
+    def _get_embedder(self, name, layer=None, device=None):
         if device is None:
             device = get_device()
         emb = Embedder(name)
@@ -185,7 +265,7 @@ class AudioPromptAdherence:
         if emb == Embedder.clap:
             from audio_metrics.clap import CLAP
 
-            return CLAP(device, intermediate_layers=False)
+            return CLAP(device, intermediate_layers=layer is not None)
         raise NotImplementedError(f"Unsupported embedder {emb}")
 
     def _make_emb(self, audio_pairs, progress=None):
