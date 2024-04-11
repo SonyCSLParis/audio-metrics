@@ -163,17 +163,13 @@ class AudioMetrics:
                 "Background data not available. Please provide data using `prepare_background()`"
             )
         fake_data_dict = self.load_metric_input_data(source)
-
-        result = dict()
-
+        result = {}
         if self.has_pca():
             real_data_dict = self._pca_bg_data
             fake_data_dict = self.project(fake_data_dict)
         else:
             real_data_dict = self.bg_data
 
-        print("real keys", sorted(real_data_dict.keys()))
-        print("fake keys", sorted(fake_data_dict.keys()))
         for key, real_data in real_data_dict.items():
             fake_data = fake_data_dict[key]
             key_str = "_".join(key)
@@ -244,6 +240,7 @@ class AudioMetrics:
         return bg_data
 
     def get_serializable_background(self, ensure_radii=False):
+        """obsolete?"""
         """Return background as a dict that can be passed to `np.savez`"""
         if self.bg_data is None:
             return None
@@ -262,6 +259,7 @@ class AudioMetrics:
         return to_save
 
     def save_background_statistics(self, outfile, ensure_radii=False):
+        """obsolete?"""
         to_save = self.get_serializable_background(ensure_radii)
         if to_save is None:
             return
@@ -279,15 +277,4 @@ class AudioMetrics:
 
 
 def save_embeddings(outfile, embeddings):
-    to_save = {}
-    for (model, layer), activations in embeddings.items():
-        if "/" in model:
-            raise Exception(f'Saving names containing "/" is not supported: {model}')
-        if "/" in layer:
-            raise Exception(f'Saving names containing "/" is not supported: {layer}')
-        # for name, data in mid.__dict__.items():
-        #     key = f"{model}/{layer}/{name}"
-        #     to_save[key] = data
-        key = f"{model}/{layer}/activations"
-        to_save[key] = activations
-    np.savez(outfile, **to_save)
+    AudioMetrics.save_embeddings_file(embeddings, outfile)
