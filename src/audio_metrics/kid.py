@@ -105,11 +105,12 @@ def polynomial_kernel(X, Y, degree=3, gamma=None, coef0=1):
     return K
 
 
-def kernel_mmd(features_1, features_2, kernel):
+def kernel_mmd2(features_1, features_2, kernel):
     k_11 = kernel(features_1, features_1)
     k_22 = kernel(features_2, features_2)
     k_12 = kernel(features_1, features_2)
-    return max(0, mmd2(k_11, k_12, k_22, mmd_est="unbiased")) ** 0.5
+    # return max(0, mmd2(k_11, k_12, k_22, mmd_est="unbiased")) ** 0.5
+    return mmd2(k_11, k_12, k_22, mmd_est="unbiased")
 
 
 def kid_features_to_metric(features_1, features_2, **kwargs):
@@ -175,7 +176,7 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     ):
         f1 = features_1[rng.choice(n_samples_1, kid_subset_size, replace=False)]
         f2 = features_2[rng.choice(n_samples_2, kid_subset_size, replace=False)]
-        o = kernel_mmd(f1, f2, kernel)
+        o = kernel_mmd2(f1, f2, kernel)
         mmds[i] = o
 
     out = {
