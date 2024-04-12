@@ -1,5 +1,6 @@
 import warnings
 from pathlib import Path
+from functools import partial
 import pickle
 import enum
 import numpy as np
@@ -87,7 +88,6 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
     audio: samples x channels
 
     """
-
     assert len(audio.shape) == 2
     if audio.shape[1] == 1:
         return audio[:, 0]
@@ -132,9 +132,21 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
     return mix
 
 
-def mix_pairs(pairs):
+MIX_FUNCS = dict(
+    PP=mix_tracks_peak_preserve,
+    P0=partial(mix_tracks_peak_normalize, stem_db_red=-0, out_db=-3),
+    P1=partial(mix_tracks_peak_normalize, stem_db_red=-3, out_db=-3),
+    P2=partial(mix_tracks_peak_normalize, stem_db_red=-6, out_db=-3),
+    L0=partial(mix_tracks_loudness, stem_db_red=0, out_db=-20),
+    L1=partial(mix_tracks_loudness, stem_db_red=-3, out_db=-20),
+    L2=partial(mix_tracks_loudness, stem_db_red=-6, out_db=-20),
+)
+
+
+def mix_pairs(pairs, mix_func):
     return (
-        (mix_tracks_loudness(np.column_stack((mix, stem)), sr), sr)
+        # (mix_tracks_loudness(np.column_stack((mix, stem)), sr), sr)
+        (mix_func(np.column_stack((mix, stem)), sr), sr)
         for mix, stem, sr in pairs
     )
 
@@ -193,9 +205,11 @@ class AudioPromptAdherence:
         embedder: str = Embedder.vggish,
         layer: str | None = None,
         metric: str = Metric.fad,
+        mix_func: str = "L2",
     ):
         self.n_pca = n_pca
         self.pca_whiten = pca_whiten
+        self.mix_func = MIX_FUNCS.get(mix_func, "L2")
         embedders = {"emb": self._get_embedder(embedder, layer=layer, device=device)}
         self.embed_kwargs = {
             "combine_mode": "average",
@@ -270,7 +284,7 @@ class AudioPromptAdherence:
 
     def _make_emb(self, audio_pairs, progress=None):
         # early fusion
-        items = mix_pairs(audio_pairs)
+        items = mix_pairs(audio_pairs, self.mix_func)
         items = maybe_slice_audio(items, self.win_dur)
         return self.pipeline.embed_join(items, **self.embed_kwargs, progress=progress)
 
