@@ -9,10 +9,10 @@ def mu_sigma_from_activations(act):
     return mu, sigma
 
 
-def ensure_tensor(x):
-    if isinstance(x, torch.Tensor):
-        return x
-    return torch.tensor(x)
+def ensure_tensor(x, device=None):
+    if not isinstance(x, torch.Tensor):
+        x = torch.as_tensor(x)
+    return x.pin_memory().to(device, non_blocking=True) if device else x
 
 
 def frechet_distance(
@@ -20,13 +20,13 @@ def frechet_distance(
     sigma_x: torch.Tensor,
     mu_y: torch.Tensor,
     sigma_y: torch.Tensor,
+    device=None,
 ) -> torch.Tensor:
     # https://www.reddit.com/r/MachineLearning/comments/12hv2u6/d_a_better_way_to_compute_the_fr%C3%A9chet_inception/
-    # a = (mu_x - mu_y).square().sum(dim=-1)
-    mu_x = ensure_tensor(mu_x)
-    sigma_x = ensure_tensor(sigma_x)
-    mu_y = ensure_tensor(mu_y)
-    sigma_y = ensure_tensor(sigma_y)
+    mu_x = ensure_tensor(mu_x, device)
+    sigma_x = ensure_tensor(sigma_x, device)
+    mu_y = ensure_tensor(mu_y, device)
+    sigma_y = ensure_tensor(sigma_y, device)
     a = (mu_x - mu_y).square().sum(dim=-1)
     b = sigma_x.trace() + sigma_y.trace()
     c = torch.linalg.eigvals(sigma_x @ sigma_y).sqrt().real.sum(dim=-1)

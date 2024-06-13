@@ -157,7 +157,7 @@ class AudioMetrics:
     def __call__(self, source):
         return self.compare_to_background(source)
 
-    def compare_to_background(self, source, return_data=False):
+    def compare_to_background(self, source, return_data=False, device=None):
         if self.bg_data is None:
             raise RuntimeError(
                 "Background data not available. Please provide data using `prepare_background()`"
@@ -180,11 +180,12 @@ class AudioMetrics:
                         fake_data.sigma,
                         real_data.mu,
                         real_data.sigma,
+                        device=device,
                     ).item()
                 except ValueError:
                     fad_value = np.nan
 
-                result[f"fad_{key_str}"] = fad_value
+                result[f"fad_{key_str}"] = float(fad_value)
 
             if "kd" in self.metrics:
                 kid_vals = compute_kernel_distance(
