@@ -65,7 +65,6 @@ class EmbedderPipeline:
         self.emb_by_key = defaultdict(list)
         for name, emb in self.embedders.items():
             self.emb_by_key[emb.preprocess_key].append((name, emb))
-        self.executor = cf.ProcessPoolExecutor(max_workers=2)
 
     def _embed(self, embedder, dataset, batch_size, name, storage, combine_mode):
         dl = torch.utils.data.DataLoader(dataset, batch_size=batch_size, drop_last=False)
@@ -118,7 +117,6 @@ class EmbedderPipeline:
         }
         storage = ActivationStorage(list(self.embedders.keys()), out_q, ordered=ordered)
         with (
-            # cf.ProcessPoolExecutor(max_workers=max_workers) as executor,
             cf.ThreadPoolExecutor(max_workers=max_workers) as executor,
             cf.ThreadPoolExecutor(max_workers=len(self.embedders) + 1) as thread_exec,
         ):
