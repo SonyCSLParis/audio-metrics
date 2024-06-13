@@ -25,6 +25,7 @@ torchvision = "^0.17.1" # missing dependency for laion_clap
 torchopenl3 = "^1.0.1"
 prdc = "^0.2"
 pyloudnorm = "^0.1.1"
+cylimiter = "^0.4.2"
 
 [build-system]
 requires = ["poetry-core"]
