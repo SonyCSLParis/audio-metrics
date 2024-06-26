@@ -10,12 +10,11 @@ import laion_clap
 from audio_metrics.dataset import Embedder, GeneratorDataset
 from audio_metrics.get_url import download_and_save
 
-# CHECKPOINT = "/home/maarten/audio_metrics/music_audioset_epoch_15_esc_90.14.pt"
-
 # workaround an incompatibility in hugging face transformer def until laion_clap adapts to it.
-# CHECKPOINT = "/home/maarten/audio_metrics/music_audioset_epoch_15_esc_90.14_no_textpos_ids.pt"
 PACKAGE_NAME = __name__.split(".", maxsplit=1)[0]
+# used for apa experiments
 CHECKPOINT_URL = "https://huggingface.co/lukewys/laion_clap/resolve/main/music_speech_audioset_epoch_15_esc_89.98.pt"
+CHECKPOINT_URL = "https://huggingface.co/lukewys/laion_clap/blob/main/music_audioset_epoch_15_esc_90.14.pt"
 SR = 48000
 MODEL = {}
 
@@ -46,9 +45,9 @@ def get_model(device):
             raise Exception("Error downloading CLAP model") from e
     key = (fn, device)
     if key not in MODEL:
-        MODEL[key] = laion_clap.CLAP_Module(
-            enable_fusion=False, amodel="HTSAT-base"
-        ).to(device)
+        MODEL[key] = laion_clap.CLAP_Module(enable_fusion=False, amodel="HTSAT-base").to(
+            device
+        )
         MODEL[key].load_ckpt(fn)
     return MODEL[key]
 
@@ -85,8 +84,7 @@ class CLAP(Embedder):
             )
         else:
             dataloader = (
-                torch.from_numpy(audio).unsqueeze(0)
-                for audio, _ in audio_sr_pairs
+                torch.from_numpy(audio).unsqueeze(0) for audio, _ in audio_sr_pairs
             )
 
         for item in dataloader:
@@ -110,9 +108,7 @@ class CLAP(Embedder):
         hooks = []
         for layer in self.layers:
             hooks.append(
-                self.model.get_submodule(
-                    f"model.{layer}"
-                ).register_forward_hook(
+                self.model.get_submodule(f"model.{layer}").register_forward_hook(
                     self._get_activation_hook(layer, act_dict)
                 )
             )
