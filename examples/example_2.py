@@ -28,7 +28,9 @@ real1_items = multi_audio_slicer(real1_items, win_dur)
 fake1_items = multi_audio_slicer(fake1_items, win_dur)
 real2_items = multi_audio_slicer(real2_items, win_dur)
 
-metrics = AudioPromptAdherence(dev, win_dur, n_pca=100, embedder="clap", metric="fad")
+metrics = AudioPromptAdherence(
+    dev, win_dur, n_pca=100, embedder="clap", metric="fad", layer="audio_projection.2"
+)
 metrics.set_background(real1_items)
 print("non-matching:")
 result = metrics.compare_to_background(fake1_items)
