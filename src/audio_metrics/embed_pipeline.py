@@ -3,10 +3,9 @@ from collections import defaultdict
 import concurrent.futures as cf
 import queue
 import traceback
-
 import numpy as np
 import torch
-
+import torch.multiprocessing as mp
 from audio_metrics.dataset import audio_slicer
 
 
@@ -74,7 +73,8 @@ class EmbedderPipeline:
 
     def _feed(self, items, q):
         for i, item in enumerate(items):
-            q.put((i, item))
+            tensor_item = (torch.as_tensor(item[0]), item[1])
+            q.put((i, tensor_item))
 
     def embed_join(self, data_iter, **kwargs):
         return join_embeddings(self.embed(data_iter, **kwargs))
@@ -110,8 +110,10 @@ class EmbedderPipeline:
             "concatenate")
         """
         # todo set queue size relative to max_workers
-        preprocess_q = queue.Queue(maxsize=10)
+        # preprocess_q = queue.Queue(maxsize=10)
         out_q = queue.Queue()
+        preprocess_q = mp.Queue(maxsize=10)
+        out_q = mp.Queue()
         datasets = {
             (name, emb): QueueDataset(name=name) for name, emb in self.embedders.items()
         }
@@ -119,6 +121,12 @@ class EmbedderPipeline:
         with (
             cf.ThreadPoolExecutor(max_workers=max_workers) as executor,
             cf.ThreadPoolExecutor(max_workers=len(self.embedders) + 1) as thread_exec,
+            # cf.ProcessPoolExecutor(
+            #     max_workers=1, mp_context=mp.get_context("fork")
+            # ) as executor,
+            # cf.ProcessPoolExecutor(
+            #     max_workers=1, mp_context=mp.get_context("fork")
+            # ) as thread_exec,
         ):
             # start a future for a thread that sends work in through the queue
             futures = {

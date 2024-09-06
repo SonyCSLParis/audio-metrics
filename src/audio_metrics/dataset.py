@@ -69,9 +69,7 @@ def async_audio_loader(
     mono=True,
     sr=None,
 ):
-    items = audiofile_generator_with_sr(
-        audio_dir, recursive, file_patterns, sr=sr
-    )
+    items = audiofile_generator_with_sr(audio_dir, recursive, file_patterns, sr=sr)
     audio_loader = _audioloader(mono=mono)
     yield from async_processor(items, audio_loader, num_workers=num_workers)
 
@@ -178,9 +176,8 @@ def _prep(item, target_sr, mono):
             # print(f"resampling from {sr} to {target_sr}")
             if len(audio.shape) > 1:
                 audio = audio.T
-            audio = resampy.resample(
-                audio, sr, target_sr, filter="kaiser_fast"
-            ).T
+            audio = ensure_numpy_float32(audio)
+            audio = resampy.resample(audio, sr, target_sr, filter="kaiser_fast").T
         sr = target_sr
         if mono and len(audio.shape) > 1:
             audio = audio.mean(1)
@@ -189,7 +186,7 @@ def _prep(item, target_sr, mono):
             "argument must be either a filepath (str, or Path), or a tuple of (audio_waveform, samplerate)"
         )
     # print('embedder preprocess out', audio.shape, sr)
-    return audio.astype(np.float32), sr
+    return ensure_torch_float32(audio), sr
 
 
 class Embedder:
@@ -204,11 +201,10 @@ class Embedder:
         Given a pair (audio_waveform, samplerate), return a torch tensor of the data that should go into the embedder, with a leading batch dimension
 
         """
+        # duplicate? should this be using _prep?
         if isinstance(item, (Path, str)):
             # load audio as numpy array from file
-            audio, sr = load_audio(
-                item, self.sr, mono=self.mono, dtype=np.float32
-            )
+            audio, sr = load_audio(item, self.sr, mono=self.mono, dtype=np.float32)
         elif isinstance(item, (tuple, list)):
             if len(item) != 2:
                 raise ValueError(
@@ -219,9 +215,8 @@ class Embedder:
                 print(f"resampling from {sr} to {self.sr}")
                 if len(audio.shape) > 1:
                     audio = audio.T
-                audio = resampy.resample(
-                    audio, sr, self.sr, filter="kaiser_fast"
-                ).T
+                audio = ensure_numpy_float32(audio)
+                audio = resampy.resample(audio, sr, self.sr, filter="kaiser_fast").T
             sr = self.sr
             if self.mono and len(audio.shape) > 1:
                 audio = audio.mean(1)
@@ -230,7 +225,7 @@ class Embedder:
                 "argument must be either a filepath (str, or Path), or a tuple of (audio_waveform, samplerate)"
             )
         # print('embedder preprocess out', audio.shape, sr)
-        return audio.astype(np.float32), sr
+        return ensure_torch_float32(audio), sr
 
     @property
     def preprocess_key(self):
@@ -258,3 +253,15 @@ class Embedder:
                 msg = 'combine_mode must be one of ("concatenate", "stack", "average")'
                 raise NotImplementedError(msg)
         return result
+
+
+def ensure_numpy_float32(x):
+    if not isinstance(x, np.ndarray):
+        x = x.cpu().numpy()
+    return x.astype(np.float32)
+
+
+def ensure_torch_float32(x):
+    if not isinstance(x, torch.Tensor):
+        x = torch.from_numpy(x)
+    return x.float()
