@@ -191,7 +191,19 @@ def maybe_slice_audio(audio_sr_pairs, win_dur=None):
                 yield (win, sr)
 
 
-Embedder = enum.Enum("Embedder", {k: k for k in ("vggish", "openl3", "clap")})
+Embedder = enum.Enum(
+    "Embedder",
+    {
+        k: k
+        for k in (
+            "vggish",
+            "openl3",
+            "clap",  # legacy -> clap_music_speech
+            "clap_music",
+            "clap_music_speech",
+        )
+    },
+)
 Metric = enum.Enum("Metric", {k: k for k in ("fad", "mmd")})
 
 
@@ -202,7 +214,7 @@ class AudioPromptAdherence:
         win_dur: float | None = None,
         n_pca: int | None = None,
         pca_whiten: bool = True,
-        embedder: str = Embedder.vggish,
+        embedder: str = Embedder.clap_music,
         layer: str | None = None,
         metric: str = Metric.fad,
         mix_func: str = "L2",
@@ -276,10 +288,19 @@ class AudioPromptAdherence:
             from audio_metrics.openl3 import OpenL3
 
             return OpenL3(device)
-        if emb == Embedder.clap:
-            from audio_metrics.clap import CLAP
+        if emb in (Embedder.clap, Embedder.clap_music, Embedder.clap_music_speech):
+            from audio_metrics.clap import (
+                CLAP,
+                CLAP_MUSIC_SPEECH_CHECKPOINT_URL,
+                CLAP_MUSIC_CHECKPOINT_URL,
+            )
 
-            return CLAP(device, intermediate_layers=layer is not None)
+            clap_url = CLAP_MUSIC_SPEECH_CHECKPOINT_URL
+            if emb == Embedder.clap_music:
+                clap_url = CLAP_MUSIC_CHECKPOINT_URL
+            return CLAP(
+                device, intermediate_layers=layer is not None, checkpoint_url=clap_url
+            )
         raise NotImplementedError(f"Unsupported embedder {emb}")
 
     def _make_emb(self, audio_pairs, progress=None):
