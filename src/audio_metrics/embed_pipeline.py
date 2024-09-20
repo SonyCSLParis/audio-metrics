@@ -5,8 +5,6 @@ import queue
 import traceback
 import numpy as np
 import torch
-import torch.multiprocessing as mp
-from audio_metrics.dataset import audio_slicer
 
 
 class ActivationStorage:
@@ -110,31 +108,22 @@ class EmbedderPipeline:
             "concatenate")
         """
         # todo set queue size relative to max_workers
-        # preprocess_q = queue.Queue(maxsize=10)
+        preprocess_q = queue.Queue(maxsize=10)
         out_q = queue.Queue()
-        preprocess_q = mp.Queue(maxsize=10)
-        out_q = mp.Queue()
         datasets = {
             (name, emb): QueueDataset(name=name) for name, emb in self.embedders.items()
         }
         storage = ActivationStorage(list(self.embedders.keys()), out_q, ordered=ordered)
         with (
-            cf.ThreadPoolExecutor(max_workers=max_workers) as executor,
-            cf.ThreadPoolExecutor(max_workers=len(self.embedders) + 1) as thread_exec,
-            # cf.ProcessPoolExecutor(
-            #     max_workers=1, mp_context=mp.get_context("fork")
-            # ) as executor,
-            # cf.ProcessPoolExecutor(
-            #     max_workers=1, mp_context=mp.get_context("fork")
-            # ) as thread_exec,
+            cf.ThreadPoolExecutor(max_workers=len(self.embedders) + 2) as pool1,
+            cf.ThreadPoolExecutor(max_workers=max_workers) as pool2,
         ):
-            # start a future for a thread that sends work in through the queue
-            futures = {
-                thread_exec.submit(self._feed, data_iter, preprocess_q): "FEEDER DONE"
-            }
+            # pool1 runs the feeder thread, and an embedding thread for each embedder
+            # pool2 runs the preprocessor thread
+            futures = {pool1.submit(self._feed, data_iter, preprocess_q): "FEEDER DONE"}
             embed_futures = []
             for (name, embedder), dataset in datasets.items():
-                fut = thread_exec.submit(
+                fut = pool1.submit(
                     self._embed,
                     embedder,
                     dataset,
@@ -156,7 +145,7 @@ class EmbedderPipeline:
                     for key, embs in self.emb_by_key.items():
                         # preprocess funcs are equiv per key: only need one
                         _, emb = embs[0]
-                        futures[executor.submit(emb._preprocess, audio_sr)] = (
+                        futures[pool2.submit(emb._preprocess, audio_sr)] = (
                             item_ids,
                             key,
                         )

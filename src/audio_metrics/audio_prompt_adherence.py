@@ -1,5 +1,4 @@
 import warnings
-from pathlib import Path
 from functools import partial
 import pickle
 import enum
