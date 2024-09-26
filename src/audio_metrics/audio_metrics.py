@@ -88,9 +88,6 @@ class AudioMetrics:
 
     def __setstate__(self, state):
         self.__dict__.update(state)
-        # for key in self.__dict__.keys():
-        #     if key in state:
-        #         setattr(self, key, state[key])
 
     def set_background_data(self, source):
         self.bg_data = self.load_metric_input_data(source)
@@ -119,6 +116,9 @@ class AudioMetrics:
                 n_components=self._pca_n_components, whiten=self._pca_whiten
             )
             result[key] = MetricInputData(projector.fit_transform(data.activations))
+            # eagerly cache mu/sigma by accessing them
+            result[key].mu
+            result[key].sigma
             self._pca_projectors[key] = projector
         return result
 
