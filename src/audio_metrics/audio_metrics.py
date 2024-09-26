@@ -1,6 +1,7 @@
 from pathlib import Path
 from collections import defaultdict
 import dataclasses
+import warnings
 
 import sklearn.decomposition
 import torch
@@ -182,7 +183,8 @@ class AudioMetrics:
                         real_data.sigma,
                         device=device,
                     ).item()
-                except ValueError:
+                except ValueError as e:
+                    warnings.warn(f"Error computing FAD: {e}, setting to NaN")
                     fad_value = np.nan
 
                 result[f"fad_{key_str}"] = float(fad_value)
