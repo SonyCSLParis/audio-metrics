@@ -73,6 +73,7 @@ class AccompanimentPromptAdherence:
         layer: str | None = None,
         metric: str = Metric.fad,
         mix_func: str = "L2",
+        _state_uri: str | None = None,
     ):
         self.n_pca = n_pca
         self.pca_whiten = pca_whiten
@@ -92,6 +93,8 @@ class AccompanimentPromptAdherence:
         # hacky: build the key to get the metric value from the AuioMetrics results
         self.layer = layer or embedders["emb"].names[0]
         self._key = "_".join([self.metric_key, "emb", self.layer])
+        if _state_uri:
+            self.load_state(_state_uri)
 
     def save_state(self, fp):
         joint = {}
