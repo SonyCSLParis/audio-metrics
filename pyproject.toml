@@ -25,7 +25,12 @@ torchvision = ">=0.17.1" # missing dependency for laion_clap
 prdc = ">=0.2"
 pyloudnorm = ">=0.1.1"
 cylimiter = ">=0.4.2"
-torchopenl3 = ">=1.0.1"
+
+[tool.poetry.group.openl3]
+optional = true
+
+[tool.poetry.group.openl3.dependencies]
+torchopenl3 = "^1.0.1"
 
 [build-system]
 requires = ["poetry-core"]

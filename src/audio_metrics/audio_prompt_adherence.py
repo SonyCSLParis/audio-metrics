@@ -8,7 +8,7 @@ from tqdm import tqdm
 import pyloudnorm as pyln
 from cylimiter import Limiter
 
-from audio_metrics import AudioMetrics
+from audio_metrics import AudioMetrics, Embedder
 from audio_metrics.embed_pipeline import EmbedderPipeline
 from audio_metrics.kid import KEY_METRIC_KID_MEAN
 
@@ -190,19 +190,6 @@ def maybe_slice_audio(audio_sr_pairs, win_dur=None):
                 yield (win, sr)
 
 
-Embedder = enum.Enum(
-    "Embedder",
-    {
-        k: k
-        for k in (
-            "vggish",
-            "openl3",
-            "clap",  # legacy -> clap_music_speech
-            "clap_music",
-            "clap_music_speech",
-        )
-    },
-)
 Metric = enum.Enum("Metric", {k: k for k in ("fad", "mmd")})
 
 
@@ -283,7 +270,7 @@ class AudioPromptAdherence:
             from audio_metrics.vggish import VGGish
 
             return VGGish(device)
-        if emb == Embedder.openl3:
+        if "openl3" in Embedder.__members__ and emb == Embedder.openl3:
             from audio_metrics.openl3 import OpenL3
 
             return OpenL3(device)
