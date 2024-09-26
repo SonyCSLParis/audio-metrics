@@ -7,8 +7,8 @@ import numpy as np
 import torch
 import laion_clap
 
-from audio_metrics.dataset import Embedder, GeneratorDataset
-from audio_metrics.get_url import download_and_save
+from .dataset import Embedder, GeneratorDataset
+from .get_url import download_and_save
 
 # workaround an incompatibility in hugging face transformer def until laion_clap adapts to it.
 PACKAGE_NAME = __name__.split(".", maxsplit=1)[0]

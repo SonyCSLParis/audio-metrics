@@ -6,15 +6,13 @@ import torch
 
 import torchopenl3
 
-from audio_metrics.dataset import Embedder, load_audio, GeneratorDataset
+from .dataset import Embedder, load_audio, GeneratorDataset
 
 
 class OpenL3(Embedder):
     def __init__(self, device):
         super().__init__(sr=torchopenl3.core.TARGET_SR, mono=True)
-        self.model = torchopenl3.core.load_audio_embedding_model(
-            "mel256", "music", 6144
-        )
+        self.model = torchopenl3.core.load_audio_embedding_model("mel256", "music", 6144)
         self.device = device
         self.hop_size = 1.0
         self.activations = defaultdict(list)
@@ -36,9 +34,7 @@ class OpenL3(Embedder):
                 num_workers=num_workers,
             )
         else:
-            dataloader = (
-                torch.from_numpy(audio) for audio, _ in audio_sr_pairs
-            )
+            dataloader = (torch.from_numpy(audio) for audio, _ in audio_sr_pairs)
         pred_arr = []
         with torch.no_grad():
             for batch in dataloader:

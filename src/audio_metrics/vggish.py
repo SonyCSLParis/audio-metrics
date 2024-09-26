@@ -5,7 +5,7 @@ import numpy as np
 import einops
 import torch
 
-from audio_metrics.dataset import Embedder, load_audio  # , GeneratorDataset
+from .dataset import Embedder, load_audio  # , GeneratorDataset
 
 # TODO: store model for reuse
 
@@ -62,14 +62,10 @@ class VGGish(Embedder):
                     self.model._preprocess(audio, self.sr)
                     for audio in audio_batch.cpu().numpy()
                 ]
-                spec_batch = einops.rearrange(
-                    spec_batch, "b t 1 w h -> (b t) 1 w h"
-                )
+                spec_batch = einops.rearrange(spec_batch, "b t 1 w h -> (b t) 1 w h")
                 spec_batch = spec_batch.to(self.device)
                 audio_emb = self.model(spec_batch)
-                audio_emb = einops.rearrange(
-                    audio_emb, "(b t) d -> b t d", b=batch_size
-                )
+                audio_emb = einops.rearrange(audio_emb, "(b t) d -> b t d", b=batch_size)
                 yield {self.names[0]: audio_emb.cpu().numpy()}, idx
             # if not same_size:
             #     assert audio_emb.size(0) == 1
