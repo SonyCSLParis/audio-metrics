@@ -14,7 +14,7 @@ from .get_url import download_and_save
 PACKAGE_NAME = __name__.split(".", maxsplit=1)[0]
 # used for apa experiments
 CLAP_MUSIC_SPEECH_CHECKPOINT_URL = "https://huggingface.co/lukewys/laion_clap/resolve/main/music_speech_audioset_epoch_15_esc_89.98.pt"
-CLAP_MUSIC_CHECKPOINT_URL = "https://huggingface.co/lukewys/laion_clap/blob/main/music_audioset_epoch_15_esc_90.14.pt"
+CLAP_MUSIC_CHECKPOINT_URL = "https://huggingface.co/lukewys/laion_clap/resolve/main/music_audioset_epoch_15_esc_90.14.pt"
 SR = 48000
 MODEL = {}
 
