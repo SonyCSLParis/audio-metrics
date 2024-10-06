@@ -1,7 +1,9 @@
 # Audio Metrics
 
 This repository contains a python package to compute distribution-based quality
-measures for audio data using embeddings, with a focus on music.
+metrics for audio data using embeddings, with a focus on music.
+
+It features the following metrics:
 
 * Fréchet Distance (see https://arxiv.org/abs/1812.08466 )
 
@@ -33,23 +35,43 @@ The measures can be combined with embeddings from any of the following models:
 
 * OpenL3 - https://github.com/marl/openl3 Trained on music
 
-* Laion CLAP - https://github.com/LAION-AI/CLAP Trained on Music; Embeddings
-  from the last three layers (512, 512, and 128-dimensional)
+* Laion CLAP - https://github.com/LAION-AI/CLAP using either the checkpoint
+  trained on music and speech, or the checkpoint trained on music only;
+  Embeddings from the last three layers (512, 512, and 128-dimensional)
+
 
 
 ## Installation
 
-Download this repo your computer, and in the root directory of the repo, run:
+1. Download this repository (`git clone https://github.com/SonyCSLParis/audio-metrics.git`)
 
-```
-pip install .
-```
+2. Change to the repository root directory (`cd audio-metrics`)
+
+3. You can either install into an existing python environment (activate it and
+   go to step 4), or create and activate a new environment like this:
+
+   ```
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+4. Install the package and its dependencies:
+   ```
+	pip install .
+	```
 
 
 ## Usage
 
 The following examples demonstrate the use of the package. Both examples are
 also included under the `./examples` directory.
+
+## 
+
+The Audio Prompt Adherence measures operates on sets whose elements are
+**pairs** of audio tracks, typically a **mix** and an **accompaniment**, and
+quantifies how well the accompaniment fits to the mix.
+ 
 
 ### Computing FAD/Kernel Distance 
 
