@@ -8,15 +8,7 @@ from tqdm import tqdm
 from . import AudioMetrics, Embedder
 from .embed_pipeline import EmbedderPipeline
 from .kid import KEY_METRIC_KID_MEAN
-from .mix_functions import MIX_FUNCTIONS
-
-
-def mix_pairs(pairs, mix_func):
-    return (
-        # (mix_tracks_loudness(np.column_stack((mix, stem)), sr), sr)
-        (mix_func(np.column_stack((mix, stem)), sr), sr)
-        for mix, stem, sr in pairs
-    )
+from .mix_functions import MIX_FUNCTIONS, mix_pairs
 
 
 def misalign(pairs):
@@ -32,9 +24,7 @@ def misalign(pairs):
 
 
 def get_device():
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu")
+    return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
 def windowed_view(arr, window_size, hop_size=None):
