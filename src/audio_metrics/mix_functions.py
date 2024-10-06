@@ -6,6 +6,14 @@ import pyloudnorm as pyln
 from cylimiter import Limiter
 
 
+def mix_pairs(pairs, mix_func):
+    return (
+        # (mix_tracks_loudness(np.column_stack((mix, stem)), sr), sr)
+        (mix_func(np.column_stack((mix, stem)), sr), sr)
+        for mix, stem, sr in pairs
+    )
+
+
 def mix_tracks_peak_preserve(audio, sr):
     """Mix channels as as, and normalize to peak amplitude of the original waveforms
 
