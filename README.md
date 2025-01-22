@@ -9,7 +9,7 @@ measures for audio data using embeddings, with a focus on music.
 
 * Density and Coverage (see https://arxiv.org/abs/2002.09797 )
 
-* Audio Prompt Adherence (see https://arxiv.org/abs/2404.00775 )
+* Accompaniment Prompt Adherence (see https://arxiv.org/abs/2404.00775 )
 
 The measures have in common that they compare a **set** of candidate audio
 tracks against a **set** of reference tracks, rather than evaluating individual
@@ -21,7 +21,7 @@ naturalness of the sound, and the absence of acoustic artifacts). Density and
 Coverage explicitly measure how well the candidate set coincides with the
 reference set by comparing the embedding manifolds.
 
-The Audio Prompt Adherence measures operates on sets whose elements are
+The Accompaniment Prompt Adherence measures operates on sets whose elements are
 **pairs** of audio tracks, typically a **mix** and an **accompaniment**, and
 quantifies how well the accompaniment fits to the mix.
  
@@ -128,12 +128,12 @@ Which will print the metrics (exact values may slightly vary):
 }
 ```
 
-### Audio Prompt Adherence
+### Accompaniment Prompt Adherence
 
-The Audio Prompt Adherence metric takes pairs of audio samples (mix, and
+The Accompaniment Prompt Adherence metric takes pairs of audio samples (mix, and
 accompaniment, respectively), and computes how well mixes and accompaniments fit
 together, given a background set of (mix,accompaniment) pairs. The following
-example shows how to compute the Audio Prompt Adherence metric:
+example shows how to compute the Accompaniment Prompt Adherence metric:
 
 ```python
 from pathlib import Path
@@ -142,7 +142,7 @@ import torch
 from audio_metrics import (
     async_audio_loader,
     multi_audio_slicer,
-    AudioPromptAdherence,
+    AccompanimentPromptAdherence,
 )
 from audio_metrics.example_utils import generate_audio_samples
 
@@ -162,7 +162,7 @@ fake_items = async_audio_loader(audio_dir / "fake", mono=False)
 real_items = multi_audio_slicer(real_items, win_dur)
 fake_items = multi_audio_slicer(fake_items, win_dur)
 
-metrics = AudioPromptAdherence(
+metrics = AccompanimentPromptAdherence(
     dev, win_dur, n_pca=100, embedder="clap", metric="mmd"
 )
 metrics.set_background(real_items)
@@ -174,7 +174,7 @@ which will print something like this:
 
 ```json
 {
-  "audio_prompt_adherence": 0.15253860533909092,
+  "apa": 0.15253860533909092,
   "n_real": 200,
   "n_fake": 200
 }
@@ -185,14 +185,6 @@ which will print something like this:
 
 For more information on the audio prompt adherence metric, and to cite this work use:
 
-```
-@misc{grachten2024measuring,
-  title={Measuring audio prompt adherence with distribution-based embedding distances}, 
-  author={Maarten Grachten},
-  year={2024},
-  eprint={2404.00775},
-  archivePrefix={arXiv},
-  primaryClass={cs.SD}
-}
-```
+
+>  Maarten Grachten and Javier Nistal, 2025, Accompaniment Prompt Adherence: A Measure for Evaluating Music Accompaniment Systems. Proceedings of the International Conference on Acoustics, Speech, and Signal Processing. IEEE. Hyderabad, India.
 

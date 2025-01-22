@@ -4,7 +4,7 @@ import torch
 from audio_metrics import (
     async_audio_loader,
     multi_audio_slicer,
-    AudioPromptAdherence,
+    AccompanimentPromptAdherence,
 )
 from audio_metrics.example_utils import generate_audio_samples
 
@@ -42,7 +42,7 @@ win_dur = 5.0
 ) = get_data_iterators(win_dur)
 
 dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-metrics = AudioPromptAdherence(
+metrics = AccompanimentPromptAdherence(
     dev,
     win_dur,
     n_pca=None,

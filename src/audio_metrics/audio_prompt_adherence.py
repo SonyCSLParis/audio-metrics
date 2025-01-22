@@ -62,7 +62,7 @@ def maybe_slice_audio(audio_sr_pairs, win_dur=None):
 Metric = enum.Enum("Metric", {k: k for k in ("fad", "mmd")})
 
 
-class AudioPromptAdherence:
+class AccompanimentPromptAdherence:
     def __init__(
         self,
         device: str | torch.device | None = None,
@@ -198,7 +198,7 @@ class AudioPromptAdherence:
         if abs(m_x_y - m_xp_y) >= self.m_x_xp:
             warnings.warn("Triangle inequality not satisfied")
         return {
-            "audio_prompt_adherence": score,
+            "apa": score,
             "n_real": d1["n_real"],
             "n_fake": d1["n_fake"],
         }

@@ -27,5 +27,5 @@ Embedder = enum.Enum(
 
 from .dataset import async_audio_loader, multi_audio_slicer
 from .audio_metrics import AudioMetrics, MetricInputData, save_embeddings
-from .audio_prompt_adherence import AudioPromptAdherence
+from .audio_prompt_adherence import AccompanimentPromptAdherence
 from .embed_pipeline import EmbedderPipeline
