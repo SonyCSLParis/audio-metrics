@@ -3,7 +3,7 @@ import torch
 from audio_metrics import (
     async_audio_loader,
     multi_audio_slicer,
-    AudioPromptAdherence,
+    AccompanimentPromptAdherence,
 )
 from audio_metrics.example_utils import generate_audio_samples
 
@@ -16,7 +16,7 @@ def samples_dir(tmpdir):
 
 
 def make_apa(win_dur=5.0, dev="cuda"):
-    return AudioPromptAdherence(
+    return AccompanimentPromptAdherence(
         torch.device(dev), win_dur, n_pca=10, embedder="openl3", metric="fad"
     )
 
