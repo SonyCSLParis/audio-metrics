@@ -183,8 +183,8 @@ which will print something like this:
 
 ## Citation
 
-For more information on the audio prompt adherence metric, and to cite this work use:
+For more information on the audio prompt adherence metric, and to cite this work, please use:
 
 
->  Maarten Grachten and Javier Nistal, 2025, Accompaniment Prompt Adherence: A Measure for Evaluating Music Accompaniment Systems. Proceedings of the International Conference on Acoustics, Speech, and Signal Processing. IEEE. Hyderabad, India.
+>  M. Grachten and J. Nistal. (2025). Accompaniment Prompt Adherence: A Measure for Evaluating Music Accompaniment Systems. Proceedings of the International Conference on Acoustics, Speech, and Signal Processing. IEEE. Hyderabad, India.
 
