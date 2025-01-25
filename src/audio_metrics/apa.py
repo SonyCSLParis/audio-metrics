@@ -192,15 +192,13 @@ class AccompanimentPromptAdherence:
         key = self._key
         m_x_y = max(0, d1[key])
         m_xp_y = max(0, d2[key])
-        # score = (m_xp_y - m_x_y) / (m_xp_y + m_x_y)
-        # score = max(0, (m_xp_y - m_x_y) / self.m_x_xp)
         score = apa(m_x_y, m_xp_y, self.m_x_xp)
         if abs(m_x_y - m_xp_y) >= self.m_x_xp:
             warnings.warn("Triangle inequality not satisfied")
         return {
             "apa": score,
-            "n_real": d1["n_real"],
-            "n_fake": d1["n_fake"],
+            "num_reference": d1["n_real"],
+            "num_candidate": d1["n_fake"],
         }
 
     def _check_minimum_data_size(self, n_items):
@@ -215,9 +213,6 @@ def apa(d_y_x, d_y_xp, d_x_xp):
     numerator = d_y_xp - d_y_x
     denominator = d_x_xp
     if abs(numerator) > denominator:
-        # msg1 = f" y_x={d_y_x:.3f} y_xp={d_y_xp:.3f} x_xp={d_x_xp:.3f}"
-        # msg2 = f" a+b={abs(d_y_x - d_y_xp)} c={d_x_xp}"
-        # warnings.warn("Triangle inequality not satisfied:" + msg1 + msg2)
         denominator = abs(numerator)
     if denominator <= 0:
         return 0.0
