@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 from collections import defaultdict
+from pathlib import Path
+import tempfile
 import concurrent.futures as cf
 import queue
 import traceback
@@ -56,6 +58,21 @@ class ActivationStorage:
                 self.i += 1
 
 
+class FeedQueue(queue.Queue):
+    def put(self, v):
+        (i, (data, sr)) = v
+        # This doesn't work, need name temporary file
+        f = tempfile.TemporaryFile(delete=False)
+        np.save(f.name, data)
+        super().put((i, (f.name, sr)))
+
+    def get(self):
+        (i, (fn, sr)) = super().get()
+        data = np.load(fn)
+        Path(fn).unlink()
+        return (i, (data, sr))
+
+
 class EmbedderPipeline:
     def __init__(self, embedders):
         self.embedders = embedders
@@ -108,7 +125,8 @@ class EmbedderPipeline:
             "concatenate")
         """
         # todo set queue size relative to max_workers
-        preprocess_q = queue.Queue(maxsize=10)
+        # preprocess_q = queue.Queue(maxsize=10)
+        preprocess_q = FeedQueue(maxsize=100)
         out_q = queue.Queue()
         datasets = {
             (name, emb): QueueDataset(name=name) for name, emb in self.embedders.items()
