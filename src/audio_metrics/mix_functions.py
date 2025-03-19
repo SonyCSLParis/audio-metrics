@@ -14,6 +14,11 @@ def mix_pairs(pairs, mix_func):
     )
 
 
+def mix_pair(pair, mix_func):
+    mix, stem, sr = pair
+    return (mix_func(np.column_stack((mix, stem)), sr), sr)
+
+
 def mix_tracks_peak_preserve(audio, sr):
     """Mix channels as as, and normalize to peak amplitude of the original waveforms
 
