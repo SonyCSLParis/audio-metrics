@@ -4,6 +4,7 @@ import concurrent.futures as cf
 
 import tqdm
 import torch
+from .cpu_parallel import handle_futures
 
 
 def clone_model(model, device):
@@ -59,7 +60,7 @@ class GPUWorkerHandler:
         return future
 
 
-def iterable_process(
+def iterable_process_old(
     iterator,
     model,
     n_gpus,
@@ -113,3 +114,41 @@ def iterable_process(
             else:
                 yield ready_result
             del futures[fut]
+
+
+def iterable_process(
+    iterator,
+    model,
+    n_gpus,
+    target=None,
+    desc=None,
+    discard_input=True,
+    in_buffer_size=None,
+    out_buffer_size=None,
+):
+    if in_buffer_size is None:
+        in_buffer_size = 2 * n_gpus
+    if out_buffer_size is None:
+        out_buffer_size = 2 * n_gpus
+
+    with cf.ThreadPoolExecutor(max_workers=n_gpus) as thread_pool:
+        gpu_worker_handler = GPUWorkerHandler(n_gpus, thread_pool)
+        tqdm_kwargs = {"desc": desc, "leave": False} if desc else {"disable": True}
+        progress = tqdm.tqdm(**tqdm_kwargs)
+        progress.total = 0
+        futures = {}
+        ready = {}
+        for item in iterator:
+            fut = gpu_worker_handler.submit(model, target=target, args=(item,))
+            futures[fut] = None if discard_input else item
+            progress.total += 1
+            progress.refresh()
+            if len(futures) >= in_buffer_size:
+                to_yield, _ = cf.wait(futures, return_when=cf.FIRST_COMPLETED)
+                for fut in to_yield:
+                    ready[fut] = futures.pop(fut)
+            yield from handle_futures(ready, discard_input, progress, out_buffer_size)
+
+        yield from handle_futures(ready, discard_input, progress)
+        yield from handle_futures(futures, discard_input, progress)
+        progress.close()
