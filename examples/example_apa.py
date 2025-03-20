@@ -3,6 +3,7 @@ from functools import partial
 import random
 from itertools import chain, tee
 from time import perf_counter
+import prdc
 
 import numpy as np
 import torch
@@ -150,6 +151,100 @@ class MeanCovNumpy:
         return MeanCov(mean, cov, n_total)
 
 
+class MetricInputData:
+    def __init__(self, store_embeddings=True):
+        self.mean = None
+        self.n = None
+        self.cov = None
+        self.store_embeddings = store_embeddings
+        self.embeddings = None
+        self.radii = {}
+        self.dtype = torch.float64
+
+    def save(self, fp):
+        torch.save(self.__dict__, fp)
+
+    @classmethod
+    def load(cls, fp):
+        self = cls()
+        self.__dict__.update(torch.load(fp, weights_only=True))
+        return self
+
+    def add(self, embeddings):
+        mean = torch.mean(embeddings, 0).to(dtype=self.dtype)
+        cov = torch.cov(embeddings.T).to(dtype=self.dtype)
+        n = len(embeddings)
+        self._update_stats(mean, cov, n)
+        if self.store_embeddings:
+            self._update_embeddings(embeddings)
+
+    def get_radii(self, k_neighbor):
+        key = f"radii_{k_neighbor}"
+        radii = self.radii.get(key)
+        if radii is None and self.embeddings is not None:
+            radii = prdc.compute_nearest_neighbour_distances(
+                self.embeddings.numpy(), k_neighbor
+            )
+            self.radii[key] = radii
+        return radii
+
+    def _update_embeddings(self, embeddings):
+        if self.embeddings is None:
+            self.embeddings = embeddings
+            return
+        self.embeddings = torch.stack((self.embeddings, embeddings))
+
+    def __len__(self):
+        return self.n or 0
+
+    def _update_stats(self, mean, cov, n):
+        if self.n is None:
+            self.mean = mean
+            self.cov = cov
+            self.n = n
+            return
+        n_prod = self.n * n
+        n_total = self.n + n
+        new_mean = (self.n * self.mean + n * mean) / n_total
+        diff_mean = self.mean - mean
+        diff_mean_mat = torch.einsum("i,j->ij", diff_mean, diff_mean)
+        w_self = (self.n - 1) / (n_total - 1)
+        w_other = (n - 1) / (n_total - 1)
+        w_diff = (n_prod / n_total) / (n_total - 1)
+        new_cov = w_self * self.cov + w_other * cov + w_diff * diff_mean_mat
+        self.n = n_total
+        self.mean = new_mean
+        self.cov = new_cov
+
+    # def compute(self, embeddings):
+    #     self.mean = torch.mean(embeddings, 0).to(dtype=self.dtype)
+    #     self.n = len(embeddings)
+    #     self.cov = torch.cov(embeddings.T).to(dtype=self.dtype)
+    #     return self
+
+    # def add(self, embeddings):
+    #     new = self + MeanCovTorch().compute(embeddings)
+    #     self.mean = new.mean
+    #     self.cov = new.cov
+    #     self.n = new.n
+
+    # def __add__(self, other):
+    #     assert isinstance(other, MeanCovTorch)
+    #     if self.n is None:
+    #         return MeanCovTorch(other.mean.clone(), other.cov.clone(), other.n)
+
+    #     n_prod = self.n * other.n
+    #     n_total = self.n + other.n
+    #     mean = (self.n * self.mean + other.n * other.mean) / n_total
+    #     diff_mean = self.mean - other.mean
+    #     diff_mean_mat = torch.einsum("i,j->ij", diff_mean, diff_mean)
+    #     w_self = (self.n - 1) / (n_total - 1)
+    #     w_other = (other.n - 1) / (n_total - 1)
+    #     w_diff = (n_prod / n_total) / (n_total - 1)
+    #     cov = w_self * self.cov + w_other * other.cov + w_diff * diff_mean_mat
+    #     return MeanCovTorch(mean, cov, n_total)
+
+
 class MeanCovTorch:
     def __init__(self, mean=None, cov=None, n=None):
         self.mean = mean
@@ -214,24 +309,29 @@ class CLAP:
         return {"embedding": embedding.cpu()}
 
 
-def batch_iterator(items, batch_size=32):
+def batch_iterator_single(items, batch_size=32):
+    audio = []
+    for item in items:
+        audio.append(item["audio"])
+        if len(audio) == batch_size:
+            yield {"audio": np.stack(audio)}
+            audio = []
+    if audio:
+        yield {"audio": np.stack(audio)}
+
+
+def batch_iterator_dual(items, batch_size=32):
     audio = []
     aligned = []
     for item in items:
         audio.append(item["audio"])
         aligned.append(item["aligned"])
         if len(audio) == batch_size:
-            yield {
-                "audio": np.stack(audio),
-                "aligned": np.array(aligned),
-            }
+            yield {"audio": np.stack(audio), "aligned": np.array(aligned)}
             audio = []
             aligned = []
     if audio:
-        yield {
-            "audio": np.stack(audio),
-            "aligned": np.array(aligned),
-        }
+        yield {"audio": np.stack(audio), "aligned": np.array(aligned)}
 
 
 def audio_slicer(item, win_dur, sr, hop_dur=None):
@@ -257,6 +357,36 @@ def serialize_pairs(pairs1, pairs2):
         # misaligned pair
         misaliged = np.column_stack((pair1[:, 0], pair2[:, 1]))
         yield {"audio": misaliged, "aligned": False}
+
+
+def embedding_pipeline_single(waveforms, clap_encoder, n_gpus, gpu_handler=None):
+    win_dur = 5.0
+    sr = 48000
+    _mix_pair = partial(mix_pair, mix_func=MIX_FUNCTIONS["L0"], sr=clap_encoder.sr)
+    # iterate over windows
+    items = multi_audio_slicer(waveforms, win_dur, sr=sr)
+    # convert to dictionaries
+    items = ({"audio": item} for item in items)
+    # create mix the context stem pairs
+    items = cpu_iterable_process(
+        items, _mix_pair, n_workers=16, desc="mixing pairs", use_threads=True
+    )
+    # accumulate into batches
+    items = batch_iterator_single(items, batch_size=256)
+    # compute the clap embeddings
+    items = gpu_iterable_process(
+        items,
+        clap_encoder,
+        desc="computing clap",
+        n_gpus=n_gpus,
+        discard_input=False,
+        gpu_worker_handler=gpu_handler,
+    )
+    # aggreate the statistics
+    mean_cov = MeanCovTorch()
+    for item in items:
+        mean_cov.add(item["embedding"])
+    return mean_cov
 
 
 def embedding_pipeline_dual(waveforms, clap_encoder, n_gpus, gpu_handler=None):
@@ -289,11 +419,10 @@ def embedding_pipeline_dual(waveforms, clap_encoder, n_gpus, gpu_handler=None):
         n_workers=16,
         desc="mixing pairs",
         discard_input=False,
-        # in_buffer_size=16,
-        # out_buffer_size=16,
+        use_threads=True,
     )
     # accumulate into batches
-    items = batch_iterator(items, batch_size=16)
+    items = batch_iterator_dual(items, batch_size=256)
     # compute the clap embeddings
     items = gpu_iterable_process(
         items,
@@ -319,40 +448,28 @@ def embedding_pipeline_dual(waveforms, clap_encoder, n_gpus, gpu_handler=None):
     return mean_cov_aligned, mean_cov_misaligned
 
 
-def main_test_shuffle():
-    items = ((-i, i) for i in range(100))
-    buffer_size = 1000
-    seed = 1243
-    _shuffle_stream = partial(shuffle_stream, buffer_size=buffer_size, seed=seed)
-
-    pairs1, pairs2 = tee(items)
-    stems2 = (s for _, s in pairs2)
-    shuffled_stems = _shuffle_stream(stems2)
-    for (ctx, stem), stem_shuf in zip(pairs1, shuffled_stems):
-        print(ctx, stem, stem_shuf)
-
-
 def main():
     clap_cktpt = "/home/maarten/.cache/audio_metrics/music_audioset_epoch_15_esc_90.14.pt"
     clap_encoder = CLAP(ckpt=clap_cktpt)
     (
-        real1_win_iterator,
-        fake1_win_iterator,
-        real2_win_iterator,
+        real1_song_iterator,
+        fake1_song_iterator,
+        real2_song_iterator,
     ) = get_data_iterators(sr=clap_encoder.sr)
-    # waveforms = chain(real1_win_iterator, fake1_win_iterator, real2_win_iterator)
+    # waveforms = chain(real1_song_iterator, fake1_song_iterator, real2_song_iterator)
     n_gpus = torch.cuda.device_count()
     gpu_handler = GPUWorkerHandler(n_gpus)
-    mean_cov = embedding_pipeline_dual(
-        real1_win_iterator, clap_encoder, n_gpus=n_gpus, gpu_handler=gpu_handler
+    C = embedding_pipeline_single(
+        real2_song_iterator, clap_encoder, n_gpus=n_gpus, gpu_handler=gpu_handler
     )
-    mean_cov = embedding_pipeline_dual(
-        real2_win_iterator, clap_encoder, n_gpus=n_gpus, gpu_handler=gpu_handler
+    R, Rp = embedding_pipeline_dual(
+        real1_song_iterator, clap_encoder, n_gpus=n_gpus, gpu_handler=gpu_handler
     )
+
     import ipdb
 
     ipdb.set_trace()
-    mean_cov
+    C
     # apa = APA()
     # reference_set = load_ctx_stem_pairs()
     # # candidate_set = ...

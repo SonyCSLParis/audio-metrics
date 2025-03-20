@@ -7,18 +7,18 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
 	"appdirs",
-    "torch<2.6",
-    "torchvision",
-    "laion-clap @ git+https://github.com/LAION-AI/CLAP.git",
-    "pyloudnorm",
-    "scikit-learn",
-    "loguru",
-    "soundfile",
-    "cylimiter",
-    "einops",
-    "resampy",
-    "tqdm",
-    "prdc",
+	"torch<2.6",
+	"torchvision",
+	"laion-clap @ git+https://github.com/LAION-AI/CLAP.git",
+	"pyloudnorm",
+	"scikit-learn",
+	"loguru",
+	"soundfile",
+	"cylimiter",
+	"einops",
+	"resampy",
+	"tqdm",
+	"prdc",
 ]
 
 [tool.uv]
