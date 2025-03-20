@@ -2,12 +2,12 @@ from pathlib import Path
 from functools import partial
 import random
 from itertools import chain, tee
+import pickle
 from time import perf_counter
-import prdc
+from prdc import prdc
 
 import numpy as np
 import torch
-import laion_clap
 
 from audio_metrics.example_utils import generate_audio_samples
 from audio_metrics.mix_functions import MIX_FUNCTIONS, mix_pair
@@ -17,9 +17,7 @@ from audio_metrics.gpu_parallel import (
     GPUWorkerHandler,
 )
 from audio_metrics.fad import frechet_distance
-
-
-from audio_metrics import async_audio_loader, multi_audio_slicer, APA
+from audio_metrics.dataset import async_audio_loader, multi_audio_slicer
 
 
 def shuffle_stream(iterator, buffer_size=100, seed=None, min_age=0):
@@ -121,37 +119,7 @@ def get_data_iterators(basedir=".", sr=48000):
     )
 
 
-class MeanCovNumpy:
-    def __init__(self, mean=None, cov=None, n=None):
-        self.mean = mean
-        self.n = n
-        self.cov = cov
-        self.dtype = np.float64
-
-    def compute(self, embeddings):
-        self.mean = np.mean(embeddings, 0, dtype=self.dtype)
-        self.n = len(embeddings)
-        self.cov = np.cov(embeddings, rowvar=False, dtype=self.dtype)
-        return self
-
-    def __add__(self, other):
-        assert isinstance(other, MeanCov)
-        if self.n is None:
-            return MeanCov(other.mean.copy(), other.cov.copy(), other.n)
-
-        n_prod = self.n * other.n
-        n_total = self.n + other.n
-        mean = (self.n * self.mean + other.n * other.mean) / n_total
-        diff_mean = self.mean - other.mean
-        diff_mean_mat = np.einsum("i,j->ij", diff_mean, diff_mean)
-        w_self = (self.n - 1) / (n_total - 1)
-        w_other = (other.n - 1) / (n_total - 1)
-        w_diff = (n_prod / n_total) / (n_total - 1)
-        cov = w_self * self.cov + w_other * other.cov + w_diff * diff_mean_mat
-        return MeanCov(mean, cov, n_total)
-
-
-class MetricInputData:
+class AudioMetricsData:
     def __init__(self, store_embeddings=True):
         self.mean = None
         self.n = None
@@ -192,7 +160,7 @@ class MetricInputData:
         if self.embeddings is None:
             self.embeddings = embeddings
             return
-        self.embeddings = torch.stack((self.embeddings, embeddings))
+        self.embeddings = torch.cat((self.embeddings, embeddings))
 
     def __len__(self):
         return self.n or 0
@@ -216,76 +184,49 @@ class MetricInputData:
         self.mean = new_mean
         self.cov = new_cov
 
-    # def compute(self, embeddings):
-    #     self.mean = torch.mean(embeddings, 0).to(dtype=self.dtype)
-    #     self.n = len(embeddings)
-    #     self.cov = torch.cov(embeddings.T).to(dtype=self.dtype)
-    #     return self
 
-    # def add(self, embeddings):
-    #     new = self + MeanCovTorch().compute(embeddings)
-    #     self.mean = new.mean
-    #     self.cov = new.cov
-    #     self.n = new.n
+# class MeanCovTorch:
+#     def __init__(self, mean=None, cov=None, n=None):
+#         self.mean = mean
+#         self.n = n
+#         self.cov = cov
+#         self.dtype = torch.float64
 
-    # def __add__(self, other):
-    #     assert isinstance(other, MeanCovTorch)
-    #     if self.n is None:
-    #         return MeanCovTorch(other.mean.clone(), other.cov.clone(), other.n)
+#     def compute(self, embeddings):
+#         self.mean = torch.mean(embeddings, 0).to(dtype=self.dtype)
+#         self.n = len(embeddings)
+#         self.cov = torch.cov(embeddings.T).to(dtype=self.dtype)
+#         return self
 
-    #     n_prod = self.n * other.n
-    #     n_total = self.n + other.n
-    #     mean = (self.n * self.mean + other.n * other.mean) / n_total
-    #     diff_mean = self.mean - other.mean
-    #     diff_mean_mat = torch.einsum("i,j->ij", diff_mean, diff_mean)
-    #     w_self = (self.n - 1) / (n_total - 1)
-    #     w_other = (other.n - 1) / (n_total - 1)
-    #     w_diff = (n_prod / n_total) / (n_total - 1)
-    #     cov = w_self * self.cov + w_other * other.cov + w_diff * diff_mean_mat
-    #     return MeanCovTorch(mean, cov, n_total)
+#     def add(self, embeddings):
+#         new = self + MeanCovTorch().compute(embeddings)
+#         self.mean = new.mean
+#         self.cov = new.cov
+#         self.n = new.n
 
+#     def __add__(self, other):
+#         assert isinstance(other, MeanCovTorch)
+#         if self.n is None:
+#             return MeanCovTorch(other.mean.clone(), other.cov.clone(), other.n)
 
-class MeanCovTorch:
-    def __init__(self, mean=None, cov=None, n=None):
-        self.mean = mean
-        self.n = n
-        self.cov = cov
-        self.dtype = torch.float64
-
-    def compute(self, embeddings):
-        self.mean = torch.mean(embeddings, 0).to(dtype=self.dtype)
-        self.n = len(embeddings)
-        self.cov = torch.cov(embeddings.T).to(dtype=self.dtype)
-        return self
-
-    def add(self, embeddings):
-        new = self + MeanCovTorch().compute(embeddings)
-        self.mean = new.mean
-        self.cov = new.cov
-        self.n = new.n
-
-    def __add__(self, other):
-        assert isinstance(other, MeanCovTorch)
-        if self.n is None:
-            return MeanCovTorch(other.mean.clone(), other.cov.clone(), other.n)
-
-        n_prod = self.n * other.n
-        n_total = self.n + other.n
-        mean = (self.n * self.mean + other.n * other.mean) / n_total
-        diff_mean = self.mean - other.mean
-        diff_mean_mat = torch.einsum("i,j->ij", diff_mean, diff_mean)
-        w_self = (self.n - 1) / (n_total - 1)
-        w_other = (other.n - 1) / (n_total - 1)
-        w_diff = (n_prod / n_total) / (n_total - 1)
-        cov = w_self * self.cov + w_other * other.cov + w_diff * diff_mean_mat
-        return MeanCovTorch(mean, cov, n_total)
+#         n_prod = self.n * other.n
+#         n_total = self.n + other.n
+#         mean = (self.n * self.mean + other.n * other.mean) / n_total
+#         diff_mean = self.mean - other.mean
+#         diff_mean_mat = torch.einsum("i,j->ij", diff_mean, diff_mean)
+#         w_self = (self.n - 1) / (n_total - 1)
+#         w_other = (other.n - 1) / (n_total - 1)
+#         w_diff = (n_prod / n_total) / (n_total - 1)
+#         cov = w_self * self.cov + w_other * other.cov + w_diff * diff_mean_mat
+#         return MeanCovTorch(mean, cov, n_total)
 
 
 class CLAP:
     def __init__(self, ckpt, model_name="clap"):
+        import laion_clap
+
         self.model_name = model_name
         self.clap = laion_clap.CLAP_Module(enable_fusion=False, amodel="HTSAT-base")
-        self.ckpt_path = Path(ckpt)
         self.clap.load_ckpt(ckpt, verbose=False)
 
     @property
@@ -383,7 +324,7 @@ def embedding_pipeline_single(waveforms, clap_encoder, n_gpus, gpu_handler=None)
         gpu_worker_handler=gpu_handler,
     )
     # aggreate the statistics
-    mean_cov = MeanCovTorch()
+    mean_cov = AudioMetricsData()
     for item in items:
         mean_cov.add(item["embedding"])
     return mean_cov
@@ -436,8 +377,8 @@ def embedding_pipeline_dual(waveforms, clap_encoder, n_gpus, gpu_handler=None):
     )
 
     # aggreate the statistics
-    mean_cov_aligned = MeanCovTorch()
-    mean_cov_misaligned = MeanCovTorch()
+    mean_cov_aligned = AudioMetricsData()
+    mean_cov_misaligned = AudioMetricsData()
     for item in items:
         aligned = item["aligned"]
         if np.any(aligned):
@@ -470,11 +411,6 @@ def main():
 
     ipdb.set_trace()
     C
-    # apa = APA()
-    # reference_set = load_ctx_stem_pairs()
-    # # candidate_set = ...
-    # apa.set_reference(reference_set)
-    # apa.compute(candidate_set)
 
 
 if __name__ == "__main__":
