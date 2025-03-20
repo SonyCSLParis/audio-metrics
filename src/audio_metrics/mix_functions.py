@@ -20,8 +20,7 @@ def mix_pairs(pairs, mix_func):
 
 
 def mix_pair(data, mix_func, sr):
-    joint = np.column_stack((data["ctx"], data["stem"]))
-    return {"audio": mix_func(joint, sr=sr)}
+    return {"audio": mix_func(data["audio"], sr=sr)}
 
 
 def mix_tracks_peak_preserve(audio, sr):
