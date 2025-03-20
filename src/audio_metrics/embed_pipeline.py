@@ -62,7 +62,7 @@ class FeedQueue(queue.Queue):
     def put(self, v):
         (i, (data, sr)) = v
         # This doesn't work, need name temporary file
-        f = tempfile.TemporaryFile(delete=False)
+        f = tempfile.NamedTemporaryFile(delete=False)
         np.save(f.name, data)
         super().put((i, (f.name, sr)))
 
