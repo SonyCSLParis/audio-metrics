@@ -30,3 +30,12 @@ line-length = 90
 [tool.ruff]
 line-length = 90
 
+[dependency-groups]
+dev = [
+    "ipdb>=0.13.13",
+    "ipython>=8.34.0",
+    "opt-einsum>=3.4.0",
+    "python-lsp-server>=1.12.2",
+    "ruff>=0.11.1",
+]
+

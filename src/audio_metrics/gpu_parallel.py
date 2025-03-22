@@ -42,14 +42,11 @@ class GPUWorkerHandler:
 
     def get_model_on_gpu(self, model, target_gpu_i):
         current_gpu_i = self.get_current_gpu_i(model)
+        if current_gpu_i == target_gpu_i:
+            return model
         key = (hash(model), target_gpu_i)
         if key not in self.models:
-            if current_gpu_i is None:
-                self.models[key] = clone_model(
-                    model, torch.device(f"cuda:{target_gpu_i}")
-                )
-            else:
-                self.models[key] = model
+            self.models[key] = clone_model(model, torch.device(f"cuda:{target_gpu_i}"))
         return self.models[key]
 
     def submit(self, model, args=None, kwargs=None, target=None):
@@ -87,7 +84,6 @@ def iterable_process(
         in_buffer_size = 2 * n_gpus
     if out_buffer_size is None:
         out_buffer_size = 2 * n_gpus
-
     with cf.ThreadPoolExecutor(max_workers=n_gpus) as thread_pool:
         if gpu_worker_handler is None:
             gpu_worker_handler = GPUWorkerHandler(n_gpus)
@@ -97,11 +93,7 @@ def iterable_process(
         progress.total = 0
         futures = {}
         ready = {}
-        t_0 = time.perf_counter()
-        get_times = []
         for item in iterator:
-            t_1 = time.perf_counter()
-            get_times.append(t_1 - t_0)
             fut = gpu_worker_handler.submit(model, target=target, args=(item,))
             futures[fut] = None if discard_input else item
             progress.total += 1
@@ -111,13 +103,7 @@ def iterable_process(
                 for fut in to_yield:
                     ready[fut] = futures.pop(fut)
             yield from handle_futures(ready, discard_input, progress, out_buffer_size)
-            t_0 = time.perf_counter()
-
         yield from handle_futures(ready, discard_input, progress)
         yield from handle_futures(futures, discard_input, progress)
         progress.close()
         gpu_worker_handler.clear_thread_pool()
-    get_times = np.array(get_times)
-    print(
-        f"{desc} get times: {get_times.min():.4f}--{get_times.max():.4f} (median: {np.median(get_times):.4f}"
-    )
