@@ -2,12 +2,11 @@ from pathlib import Path
 from functools import partial
 import random
 from itertools import chain, tee
-import pickle
-from time import perf_counter
-from prdc import prdc
 
+import tqdm
 import numpy as np
 import torch
+from prdc import prdc
 
 from audio_metrics.example_utils import generate_audio_samples
 from audio_metrics.mix_functions import MIX_FUNCTIONS, mix_pair
@@ -20,7 +19,7 @@ from audio_metrics.fad import frechet_distance
 from audio_metrics.dataset import async_audio_loader, multi_audio_slicer
 
 
-def shuffle_stream(iterator, buffer_size=100, seed=None, min_age=0):
+def shuffle_stream(iterator, buffer_size=100, seed=None, min_age=0, desc=None):
     """
     Shuffles an iterator using a fixed-size buffer with a minimum age constraint.
 
@@ -55,10 +54,16 @@ def shuffle_stream(iterator, buffer_size=100, seed=None, min_age=0):
     # Set up the random number generator.
     rng = random if seed is None else random.Random(seed)
 
+    tqdm_kwargs = {"desc": desc, "leave": False} if desc else {"disable": True}
+    progress = tqdm.tqdm(**tqdm_kwargs)
+    progress.total = 0
+
     # Fill the buffer.
     for i in range(buffer_size):
         try:
             buffer.append(next(iterator))
+            progress.total += 1
+            progress.refresh()
             indices.append(i)
         except StopIteration:
             break
@@ -74,12 +79,15 @@ def shuffle_stream(iterator, buffer_size=100, seed=None, min_age=0):
 
     # Process new items from the iterator.
     for item in iterator:
+        progress.total += 1
+        progress.refresh()
         # Pick a random index from the eligible window.
         # Eligible window positions in 'indices' are offset, offset+1, ..., offset+n_eligible-1 (mod total).
         pos = rng.randrange(n_eligible)
         j = (offset + pos) % total
         idx = indices[j]
         yield buffer[idx]
+        progress.update() and progress.refresh()
         # Replace the chosen slot with the new item.
         buffer[idx] = item
         # Swap the chosen index with the one at the current offset.
@@ -91,17 +99,23 @@ def shuffle_stream(iterator, buffer_size=100, seed=None, min_age=0):
     rng.shuffle(indices)
     for i in indices:
         yield buffer[i]
+        progress.update() and progress.refresh()
+    progress.close()
 
 
-def get_data_iterators(basedir=".", sr=48000):
+def get_data_iterators(
+    basedir=".",
+    n_items=500,
+    sr=48000,
+):
     audio_dir1 = Path(basedir) / "audio_samples1"
     audio_dir2 = Path(basedir) / "audio_samples2"
 
     # print("generating 'real' and 'fake' audio samples")
     if not audio_dir1.exists():
-        generate_audio_samples(audio_dir1, sr=sr)
+        generate_audio_samples(audio_dir1, sr=sr, n_items=n_items)
     if not audio_dir2.exists():
-        generate_audio_samples(audio_dir2, sr=sr)
+        generate_audio_samples(audio_dir2, sr=sr, n_items=n_items)
 
     # load audio samples from files in `audio_dir`
     real1_song_iterator = async_audio_loader(audio_dir1 / "real", mono=False)
@@ -247,7 +261,7 @@ class CLAP:
             audio = audio.unsqueeze(0)
 
         embedding = self.clap.get_audio_embedding_from_data(audio, use_tensor=True)
-        return {"embedding": embedding.cpu()}
+        return {"embedding": embedding}
 
 
 def batch_iterator_single(items, batch_size=32):
@@ -304,7 +318,7 @@ def embedding_pipeline_single(waveforms, clap_encoder, n_gpus, gpu_handler=None)
     win_dur = 5.0
     sr = 48000
     _mix_pair = partial(mix_pair, mix_func=MIX_FUNCTIONS["L0"], sr=clap_encoder.sr)
-    # iterate over windows
+    # slice songs into windows
     items = multi_audio_slicer(waveforms, win_dur, sr=sr)
     # convert to dictionaries
     items = ({"audio": item} for item in items)
@@ -313,7 +327,7 @@ def embedding_pipeline_single(waveforms, clap_encoder, n_gpus, gpu_handler=None)
         items, _mix_pair, n_workers=16, desc="mixing pairs", use_threads=True
     )
     # accumulate into batches
-    items = batch_iterator_single(items, batch_size=256)
+    items = batch_iterator_single(items, batch_size=128)
     # compute the clap embeddings
     items = gpu_iterable_process(
         items,
@@ -326,44 +340,48 @@ def embedding_pipeline_single(waveforms, clap_encoder, n_gpus, gpu_handler=None)
     # aggreate the statistics
     mean_cov = AudioMetricsData()
     for item in items:
-        mean_cov.add(item["embedding"])
+        mean_cov.add(item["embedding"].cpu())
     return mean_cov
 
 
 def embedding_pipeline_dual(waveforms, clap_encoder, n_gpus, gpu_handler=None):
     win_dur = 5.0
     sr = 48000
-    song_buffer_size = 100
-    win_buffer_size = 500
+    song_buffer_size = 50
+    win_buffer_size = 200
     win_min_age = 100
     seed = 1243
-    _shuffle_stream = partial(shuffle_stream, buffer_size=song_buffer_size, seed=seed)
     _mix_pair = partial(mix_pair, mix_func=MIX_FUNCTIONS["L0"], sr=clap_encoder.sr)
     # shuffle songs
-    items = _shuffle_stream(waveforms, buffer_size=100)
-    # iterate over windows
+    items = shuffle_stream(
+        waveforms, buffer_size=song_buffer_size, seed=seed, desc="shuffling songs"
+    )
+    # slice songs into windows
     items = multi_audio_slicer(items, win_dur, sr=sr)
-
-    # duplicate the iterator
+    # duplicate the iterator in order to create misaligned pairs
     pairs1, pairs2 = tee(items)
-    # create shuffle pairs2
-    pairs2 = _shuffle_stream(
-        pairs2, buffer_size=win_buffer_size, min_age=win_min_age, seed=seed
+    # shuffle pairs2
+    pairs2 = shuffle_stream(
+        pairs2,
+        buffer_size=win_buffer_size,
+        min_age=win_min_age,
+        seed=seed,
+        desc="shuffling windows",
     )
     # create a stream of aligned/misaligned items
     items = serialize_pairs(pairs1, pairs2)
-
-    # create mix the context stem pairs
+    # mix the context stem pairs
     items = cpu_iterable_process(
         items,
         _mix_pair,
-        n_workers=16,
+        n_workers=64,
         desc="mixing pairs",
         discard_input=False,
-        use_threads=True,
+        in_buffer_size=256,
+        out_buffer_size=256,
     )
     # accumulate into batches
-    items = batch_iterator_dual(items, batch_size=256)
+    items = batch_iterator_dual(items, batch_size=32)
     # compute the clap embeddings
     items = gpu_iterable_process(
         items,
@@ -372,20 +390,19 @@ def embedding_pipeline_dual(waveforms, clap_encoder, n_gpus, gpu_handler=None):
         n_gpus=n_gpus,
         discard_input=False,
         gpu_worker_handler=gpu_handler,
-        # in_buffer_size=n_gpus,
-        # out_buffer_size=n_gpus,
+        in_buffer_size=256,
+        out_buffer_size=256,
     )
-
-    # aggreate the statistics
+    # aggregate the statistics
     mean_cov_aligned = AudioMetricsData()
     mean_cov_misaligned = AudioMetricsData()
     for item in items:
         aligned = item["aligned"]
+        embedding = item["embedding"].cpu()
         if np.any(aligned):
-            mean_cov_aligned.add(item["embedding"][aligned])
+            mean_cov_aligned.add(embedding[aligned])
         if not np.all(aligned):
-            mean_cov_misaligned.add(item["embedding"][~aligned])
-
+            mean_cov_misaligned.add(embedding[~aligned])
     return mean_cov_aligned, mean_cov_misaligned
 
 
@@ -400,11 +417,15 @@ def main():
     # waveforms = chain(real1_song_iterator, fake1_song_iterator, real2_song_iterator)
     n_gpus = torch.cuda.device_count()
     gpu_handler = GPUWorkerHandler(n_gpus)
-    C = embedding_pipeline_single(
+
+    R, Rp = embedding_pipeline_dual(
         real2_song_iterator, clap_encoder, n_gpus=n_gpus, gpu_handler=gpu_handler
     )
-    R, Rp = embedding_pipeline_dual(
+    C = embedding_pipeline_single(
         real1_song_iterator, clap_encoder, n_gpus=n_gpus, gpu_handler=gpu_handler
+    )
+    Cp = embedding_pipeline_single(
+        fake1_song_iterator, clap_encoder, n_gpus=n_gpus, gpu_handler=gpu_handler
     )
 
     import ipdb

@@ -37,7 +37,6 @@ def iterable_process(
         Executor = cf.ThreadPoolExecutor
     else:
         Executor = cf.ProcessPoolExecutor
-
     if in_buffer_size is None:
         in_buffer_size = 2 * n_workers
     if out_buffer_size is None:
@@ -48,11 +47,7 @@ def iterable_process(
         progress.total = 0
         futures = {}
         ready = {}
-        t_0 = time.perf_counter()
-        get_times = []
         for item in iterator:
-            t_1 = time.perf_counter()
-            get_times.append(t_1 - t_0)
             fut = pool.submit(target, item)
             futures[fut] = None if discard_input else item
             progress.total += 1
@@ -62,12 +57,6 @@ def iterable_process(
                 for fut in to_yield:
                     ready[fut] = futures.pop(fut)
             yield from handle_futures(ready, discard_input, progress, out_buffer_size)
-            t_0 = time.perf_counter()
-
         yield from handle_futures(ready, discard_input, progress)
         yield from handle_futures(futures, discard_input, progress)
         progress.close()
-    get_times = np.array(get_times)
-    print(
-        f"{desc} get times: {get_times.min():.4f}--{get_times.max():.4f} (median: {np.median(get_times):.4f}"
-    )
