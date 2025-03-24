@@ -8,14 +8,6 @@ from cylimiter import Limiter
 import opt_einsum
 
 
-def mix_pairs(pairs, mix_func):
-    return (
-        # (mix_tracks_loudness(np.column_stack((mix, stem)), sr), sr)
-        (mix_func(np.column_stack((mix, stem)), sr), sr)
-        for mix, stem, sr in pairs
-    )
-
-
 class Meter(pyln.Meter):
     def __init__(self, sr):
         super().__init__(sr)
@@ -115,10 +107,6 @@ class Meter(pyln.Meter):
         with np.errstate(divide="ignore"):
             LUFS = -0.691 + 10.0 * np.log10(einsum("c,c->", G, z_avg_gated))
         return LUFS
-
-
-def mix_pair(data, mix_func, sr):
-    return {"audio": mix_func(data["audio"], sr=sr)}
 
 
 def mix_tracks_peak_preserve(audio, sr):

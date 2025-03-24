@@ -61,7 +61,7 @@ class _audioloader:
         return load_audio(fp, sr=sr, mono=self.mono)
 
 
-def async_audio_loader(
+def audio_loader(
     audio_dir,
     recursive=True,
     num_workers=None,
@@ -71,7 +71,15 @@ def async_audio_loader(
 ):
     items = audiofile_generator_with_sr(audio_dir, recursive, file_patterns, sr=sr)
     audio_loader = _audioloader(mono=mono)
-    yield from async_processor(items, audio_loader, num_workers=num_workers)
+    if num_workers is None:
+        for item in items:
+            yield audio_loader(item)
+    else:
+        yield from async_processor(items, audio_loader, num_workers=num_workers)
+
+
+def async_audio_loader(*args, **kwargs):
+    yield from audio_loader(*args, **kwargs)
 
 
 def audio_slicer(item, win_dur, hop_dur=None):
@@ -141,7 +149,7 @@ def async_processor(
     with cf.ProcessPoolExecutor(num_workers) as pool:
         pusher = threading.Thread(
             target=_push_tasks,
-            args=(items, pool, func, queue)
+            args=(items, pool, func, queue),
             # daemon=True,
         )
         pusher.start()
