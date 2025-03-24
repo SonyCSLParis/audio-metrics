@@ -69,7 +69,7 @@ class GPUWorkerHandler:
         return future
 
 
-def iterable_process(
+def gpu_parallel(
     iterator,
     model,
     n_gpus,

@@ -23,7 +23,7 @@ def handle_futures(futures, discard_inputs, progress=None, size=None):
             yield ready_item
 
 
-def iterable_process(
+def cpu_parallel(
     iterator,
     target,
     n_workers=0,

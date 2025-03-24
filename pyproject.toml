@@ -6,19 +6,20 @@ authors = [{name = "Maarten Grachten"}]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-	"appdirs",
 	"torch<2.6",
 	"torchvision",
 	"laion-clap @ git+https://github.com/LAION-AI/CLAP.git",
+	"soundfile",
 	"pyloudnorm",
 	"scikit-learn",
 	"loguru",
-	"soundfile",
 	"cylimiter",
+	"prdc",
 	"einops",
 	"resampy",
 	"tqdm",
-	"prdc",
+	"rich",
+	"appdirs",
 ]
 
 [tool.uv]
@@ -35,6 +36,7 @@ dev = [
     "ipdb>=0.13.13",
     "ipython>=8.34.0",
     "opt-einsum>=3.4.0",
+    "python-benedict>=0.34.1",
     "python-lsp-server>=1.12.2",
     "ruff>=0.11.1",
 ]
