@@ -18,13 +18,19 @@ def clone_model(model, device):
 
 
 class GPUWorkerHandler:
-    def __init__(self, n_devs, thread_pool=None):
-        self.n_devs = n_devs
+    def __init__(self, device_indices=None, thread_pool=None):
         self.pool = thread_pool
         self.available_gpus = queue.Queue()
-        for i in range(self.n_devs):
+        if device_indices is None:
+            self.device_indices = tuple(range(torch.cuda.device_count()))
+        if not self.device_indices:
+            raise "No GPUs found, cannot use `gpu_parallel()`"
+        for i in self.device_indices:
             self.available_gpus.put(i)
         self.models = {}
+
+    def __len__(self):
+        return len(self.device_indices)
 
     def set_thread_pool(self, pool):
         self.pool = pool
@@ -72,25 +78,27 @@ class GPUWorkerHandler:
 def gpu_parallel(
     iterator,
     model,
-    n_gpus,
     target=None,
     desc=None,
     discard_input=True,
+    device_indices=None,
     gpu_worker_handler=None,
     in_buffer_size=None,
     out_buffer_size=None,
 ):
+    if gpu_worker_handler is None:
+        gpu_worker_handler = GPUWorkerHandler(device_indices)
     if in_buffer_size is None:
-        in_buffer_size = 2 * n_gpus
+        in_buffer_size = 2 * len(gpu_worker_handler)
     if out_buffer_size is None:
-        out_buffer_size = 2 * n_gpus
-    with cf.ThreadPoolExecutor(max_workers=n_gpus) as thread_pool:
-        if gpu_worker_handler is None:
-            gpu_worker_handler = GPUWorkerHandler(n_gpus)
+        out_buffer_size = 2 * len(gpu_worker_handler)
+
+    tqdm_kwargs = {"desc": desc, "leave": False} if desc else {"disable": True}
+    progress = tqdm.tqdm(**tqdm_kwargs)
+    progress.total = 0
+
+    with cf.ThreadPoolExecutor(max_workers=len(gpu_worker_handler)) as thread_pool:
         gpu_worker_handler.set_thread_pool(thread_pool)
-        tqdm_kwargs = {"desc": desc, "leave": False} if desc else {"disable": True}
-        progress = tqdm.tqdm(**tqdm_kwargs)
-        progress.total = 0
         futures = {}
         ready = {}
         for item in iterator:
@@ -105,5 +113,5 @@ def gpu_parallel(
             yield from handle_futures(ready, discard_input, progress, out_buffer_size)
         yield from handle_futures(ready, discard_input, progress)
         yield from handle_futures(futures, discard_input, progress)
-        progress.close()
         gpu_worker_handler.clear_thread_pool()
+    progress.close()
