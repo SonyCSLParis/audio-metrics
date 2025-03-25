@@ -82,6 +82,7 @@ class AudioMetricsData:
         self._update_stats(other.mean, other.cov, other.n)
         if self.store_embeddings:
             self._update_embeddings(other.embeddings)
+        return self
 
     def __add__(self, other):
         new = AudioMetricsData()

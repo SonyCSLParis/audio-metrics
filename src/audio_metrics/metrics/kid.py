@@ -187,7 +187,7 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     return out
 
 
-compute_kernel_distance = kid_features_to_metric
+kernel_distance = kid_features_to_metric
 
 
 # def kid_featuresdict_to_metric(

@@ -43,7 +43,7 @@ def batch_accumulator(items, batch_size=32):
         }
 
 
-def serialize_items(items1, items2=None, stems_mode=False):
+def serialize_items(items1, items2=None, apa_mode=False, stems_mode=False):
     msg = "When computing APA items should be tensors/arrays of shape [n_samples, 2] (pairing context and stem)"
     if items2 is None:
         item_pairs = ((item, None) for item in items1)
@@ -53,12 +53,13 @@ def serialize_items(items1, items2=None, stems_mode=False):
     for item1, item2 in item_pairs:
         # aligned pair
         assert len(item1.shape) == 2, msg
-        yield {"audio": item1, "category": ItemCategory.aligned}
-        if item2 is not None:
-            # misaligned pair
-            assert len(item2.shape) == 2, msg
-            misaliged = np.column_stack((item1[:, 0], item2[:, 1]))
-            yield {"audio": misaliged, "category": ItemCategory.misaligned}
+        if apa_mode:
+            yield {"audio": item1, "category": ItemCategory.aligned}
+            if item2 is not None:
+                # misaligned pair
+                assert len(item2.shape) == 2, msg
+                misaliged = np.column_stack((item1[:, 0], item2[:, 1]))
+                yield {"audio": misaliged, "category": ItemCategory.misaligned}
         if stems_mode:
             stem = item1[:, -1] if len(item1.shape) == 2 else item1
             yield {"audio": stem, "category": ItemCategory.stem}
@@ -73,11 +74,10 @@ def mix_pair(data, mix_func, sr):
 
 def embedding_pipeline(
     waveforms,
-    clap_encoder,
-    n_gpus,
+    embedder,
     gpu_handler=None,
     apa_mode: Literal["reference", "candidate"] | None = None,
-    stems_mode: bool = False,
+    stems_mode: Literal["stats", "embeddings"] | None = None,
 ):
     """
     # Input Data
@@ -117,13 +117,15 @@ def embedding_pipeline(
     trailing parts of each sample will be discarded.  To avoid this, ensure that
     all audio lengths are integer multiples of the window duration.
     """
+    print("apa_mode", apa_mode)
+
     win_dur = 5.0
     sr = 48000
     song_buffer_size = 100
     win_buffer_size = 1000
     win_min_age = 100
     seed = 1243
-    _mix_pair = partial(mix_pair, mix_func=MIX_FUNCTIONS["L0"], sr=clap_encoder.sr)
+    _mix_pair = partial(mix_pair, mix_func=MIX_FUNCTIONS["L0"], sr=embedder.sr)
 
     items = waveforms
 
@@ -150,7 +152,7 @@ def embedding_pipeline(
     else:
         shuffled_items = None
     # create a stream of aligned/misaligned items
-    items = serialize_items(items, shuffled_items, stems_mode)
+    items = serialize_items(items, shuffled_items, apa_mode, stems_mode)
     # mix the context stem pairs
     items = cpu_parallel(
         items,
@@ -168,9 +170,8 @@ def embedding_pipeline(
     # compute the clap embeddings
     items = gpu_parallel(
         items,
-        clap_encoder,
+        embedder,
         desc="computing clap",
-        n_gpus=n_gpus,
         discard_input=False,
         gpu_worker_handler=gpu_handler,
         in_buffer_size=256,
@@ -183,8 +184,9 @@ def embedding_pipeline(
         metrics_data[ItemCategory.aligned] = AudioMetricsData()
     if apa_mode == "reference":
         metrics_data[ItemCategory.misaligned] = AudioMetricsData()
-    if stems_mode:
-        metrics_data[ItemCategory.stem] = AudioMetricsData()
+    if stems_mode is not None:
+        store_embeddings = stems_mode == "embeddings"
+        metrics_data[ItemCategory.stem] = AudioMetricsData(store_embeddings)
 
     for item in items:
         embedding = item["embedding"].cpu()
