@@ -1,12 +1,17 @@
-from audio_metrics.data import AudioMetricsData, ensure_tensor
+from audio_metrics.data import AudioMetricsData
 from audio_metrics.metrics.fad import frechet_distance
 
 
-def apa_compute_d_x_xp(reference, anti_reference):
+def apa_compute_d_x_xp(reference: AudioMetricsData, anti_reference: AudioMetricsData):
     return frechet_distance(reference, anti_reference)
 
 
-def apa(candidate, reference, anti_reference, d_x_xp=None):
+def apa(
+    candidate: AudioMetricsData,
+    reference: AudioMetricsData,
+    anti_reference: AudioMetricsData,
+    d_x_xp: float | None = None,
+):
     d_y_x = frechet_distance(candidate, reference)
     d_y_xp = frechet_distance(candidate, anti_reference)
     if d_x_xp is None:

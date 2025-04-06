@@ -76,8 +76,11 @@ def embedding_pipeline(
     waveforms,
     embedder,
     gpu_handler=None,
+    projection=None,
     apa_mode: Literal["reference", "candidate"] | None = None,
-    stems_mode: Literal["stats", "embeddings"] | None = None,
+    stems_mode: bool = False,
+    store_mix_embeddings: bool = False,
+    store_stem_embeddings: bool = False,
 ):
     """
     # Input Data
@@ -181,12 +184,11 @@ def embedding_pipeline(
     # aggregate the statistics
     metrics_data = {}
     if apa_mode is not None:
-        metrics_data[ItemCategory.aligned] = AudioMetricsData()
+        metrics_data[ItemCategory.aligned] = AudioMetricsData(store_mix_embeddings)
     if apa_mode == "reference":
-        metrics_data[ItemCategory.misaligned] = AudioMetricsData()
-    if stems_mode is not None:
-        store_embeddings = stems_mode == "embeddings"
-        metrics_data[ItemCategory.stem] = AudioMetricsData(store_embeddings)
+        metrics_data[ItemCategory.misaligned] = AudioMetricsData(store_mix_embeddings)
+    if stems_mode:
+        metrics_data[ItemCategory.stem] = AudioMetricsData(store_stem_embeddings)
 
     for item in items:
         embedding = item["embedding"].cpu()

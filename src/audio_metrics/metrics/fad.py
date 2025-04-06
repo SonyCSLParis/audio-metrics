@@ -1,6 +1,7 @@
-import numpy as np
+# import numpy as np
+# from scipy import linalg
 import torch
-from scipy import linalg
+
 from audio_metrics.data import AudioMetricsData, ensure_tensor
 
 
@@ -9,7 +10,7 @@ def frechet_distance(
     y: AudioMetricsData,
     device=None,
 ):
-    return _frechet_distance(x.mean, x.cov, y.mean, y.cov)
+    return _frechet_distance(x.mean, x.cov, y.mean, y.cov, device=device).item()
 
 
 def _frechet_distance(
