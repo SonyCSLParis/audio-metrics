@@ -239,13 +239,13 @@ class AudioMetrics:
 
     def assert_reference(self):
         if self.stems_mode:
-            assert self.stem_reference, (
-                f"To compute stem metrics, specify one or more of {self._need_stems}"
-            )
-            assert self.stem_reference.n, (
-                "Call AudioMetrics.add_reference() at least once before evaluating candidates"
-            )
+            # assert (
+            #     self.stem_reference
+            # ), f"To compute stem metrics, specify one or more of {self._need_stems}"
+            assert (
+                self.stem_reference.n
+            ), "Call AudioMetrics.add_reference() at least once before evaluating candidates"
         if self.need_apa:
-            assert self.apa_reference.n, (
-                "Call AudioMetrics.add_reference() at least once before evaluating candidates"
-            )
+            assert (
+                self.apa_reference.n
+            ), "Call AudioMetrics.add_reference() at least once before evaluating candidates"
