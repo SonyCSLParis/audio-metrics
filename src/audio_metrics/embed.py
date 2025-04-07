@@ -119,7 +119,6 @@ def embedding_pipeline(
     trailing parts of each sample will be discarded.  To avoid this, ensure that
     all audio lengths are integer multiples of the window duration.
     """
-    print("apa_mode", apa_mode)
 
     win_dur = 5.0
     sr = 48000

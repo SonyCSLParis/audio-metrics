@@ -13,6 +13,15 @@ from audio_metrics.util.gpu_parallel import GPUWorkerHandler
 class AudioMetrics:
     # metrics that need access to the full embeddings (not just mu, sigma)
     _need_embeddings = set(("kd", "precision", "recall", "coverage", "density"))
+    # for serialization
+    _amd = (
+        "stem_reference",
+        "mix_reference",
+        "mix_anti_reference",
+        "stem_reference_pca",
+        "mix_reference_pca",
+        "mix_anti_reference_pca",
+    )
 
     def __init__(
         self, metrics=["apa", "fad"], n_pca=None, device_indices=None, embedder=None
@@ -36,36 +45,46 @@ class AudioMetrics:
         self.apa_d_x_xp = None
 
         if self.need_apa:
-            self.apa_reference = AudioMetricsData(self.store_mix_embeddings)
-            self.apa_anti_reference = AudioMetricsData(self.store_mix_embeddings)
+            self.mix_reference = AudioMetricsData(self.store_mix_embeddings)
+            self.mix_anti_reference = AudioMetricsData(self.store_mix_embeddings)
         else:
-            self.apa_reference = None
-            self.apa_anti_reference = None
+            self.mix_reference = None
+            self.mix_anti_reference = None
 
         if self.stems_mode:
             self.stem_reference = AudioMetricsData(self.store_stem_embeddings)
         else:
             self.stem_reference = None
 
-        self._cached_mix_pca_projections = None
-        self._cached_stem_pca_projections = None
+        self.mix_reference_pca = None
+        self.mix_anti_reference_pca = None
+        self.stem_reference_pca = None
 
     def save_state(self, fp: str | Path):
         state = self.__getstate__()
         del state["embedder"]
         del state["gpu_handler"]
+        for attr in self._amd:
+            item = state.get(attr)
+            if item:
+                state[attr] = item.serialize()
+        for attr in ("stem_projection", "mix_projection"):
+            item = state.get(attr)
+            if item:
+                state[attr] = item.__getstate__()
         torch.save(state, fp)
 
     def load_state(self, fp: str | Path):
         state = torch.load(fp, weights_only=True)
-        self.__setstate__(state)
-
-    def _load_metrics_data(self, state):
-        attrs = ["apa_reference", "apa_anti_reference", "stem_reference"]
-        for attr in attrs:
-            if attr in state:
-                setattr(self, attr, AudioMetricsData())
-                getattr(self, attr).__setstate__(state[attr])
+        for attr in self._amd:
+            item = state.get(attr)
+            if item:
+                state[attr] = AudioMetricsData.deserialize(item)
+        for attr in ("stem_projection", "mix_projection"):
+            item = state.get(attr)
+            if item:
+                state[attr] = getattr(self, attr).__setstate__(item)
+        self.__dict__.update(state)
 
     @property
     def stems_mode(self):
@@ -73,11 +92,11 @@ class AudioMetrics:
 
     @property
     def store_mix_embeddings(self):
-        return self.need_apa and self.mix_projection
+        return self.need_apa and self.mix_projection is not None
 
     @property
     def store_stem_embeddings(self):
-        return self.stem_projection or any(
+        return self.stem_projection is not None or any(
             metric in self._need_embeddings for metric in self.metrics
         )
 
@@ -95,29 +114,31 @@ class AudioMetrics:
         stem_reference = metrics.get(ItemCategory.stem)
         if stem_reference is not None:
             # invalidate cache:
-            self._cached_stem_pca_projections = None
+            self.stem_reference_pca = None
             self.stem_reference += stem_reference
 
-        apa_reference = metrics.get(ItemCategory.aligned)
-        if apa_reference is not None:
+        mix_reference = metrics.get(ItemCategory.aligned)
+        if mix_reference is not None:
             # invalidate cache:
-            self._cached_apa_pca_projections = None
-            self.apa_reference += apa_reference
+            self.mix_reference_pca = None
+            self.mix_anti_reference_pca = None
+            self.mix_reference += mix_reference
 
-        apa_anti_reference = metrics.get(ItemCategory.misaligned)
-        if apa_anti_reference is not None:
-            self.apa_anti_reference += apa_anti_reference
+        mix_anti_reference = metrics.get(ItemCategory.misaligned)
+        if mix_anti_reference is not None:
+            self.mix_anti_reference += mix_anti_reference
 
     def reset_reference(self):
         if self.need_apa:
             self.apa_d_x_xp = None
-            self.apa_reference = AudioMetricsData(self.store_mix_embeddings)
-            self.apa_anti_reference = AudioMetricsData(self.store_mix_embeddings)
-            self._cached_mix_pca_projections = None
+            self.mix_reference = AudioMetricsData(self.store_mix_embeddings)
+            self.mix_anti_reference = AudioMetricsData(self.store_mix_embeddings)
+            self.mix_reference_pca = None
+            self.mix_anti_reference_pca = None
 
         if self.stems_mode:
             self.stem_reference = AudioMetricsData(self.store_stem_embeddings)
-            self._cached_stem_pca_projections = None
+            self.stem_reference_pca = None
 
     def ensure_stem_projection(self, ref, cand):
         if self.stem_projection is None:
@@ -125,17 +146,17 @@ class AudioMetrics:
 
         store_embs = any(metric in self._need_embeddings for metric in self.metrics)
 
-        if self._cached_stem_pca_projections is None:
+        if self.stem_reference_pca is None:
             self.stem_projection.partial_fit(ref.embeddings)
             ref_emb = self.stem_projection.transform(ref.embeddings)
-            ref = AudioMetrics(store_embs)
+            ref = AudioMetricsData(store_embs)
             ref.add(ref_emb)
-            self._cached_stem_pca_projections = ref
+            self.stem_reference_pca = ref
 
-        ref = self._cached_stem_pca_projections
+        ref = self.stem_reference_pca
 
         cand_emb = self.stem_projection.transform(cand.embeddings)
-        cand = AudioMetrics(store_embs)
+        cand = AudioMetricsData(store_embs)
         cand.add(cand_emb)
 
         return ref, cand
@@ -144,7 +165,7 @@ class AudioMetrics:
         if self.mix_projection is None:
             return ref, anti_ref, cand
 
-        if self._cached_mix_pca_projections is None:
+        if self.mix_reference_pca is None:
             self.mix_projection.partial_fit(ref.embeddings)
 
             ref_emb = self.mix_projection.transform(ref.embeddings)
@@ -157,10 +178,10 @@ class AudioMetrics:
             ref.add(ref_emb)
             anti_ref.add(anti_ref_emb)
 
-            self._cached_stem_pca_projections = (ref, anti_ref)
+            self.mix_reference_pca = ref
+            self.mix_anti_reference_pca = anti_ref
 
-        ref, anti_ref = self._cached_stem_pca_projections
-
+        ref, anti_ref = self.mix_reference_pca, self.mix_anti_reference_pca
         cand_emb = self.mix_projection.transform(cand.embeddings)
         cand = AudioMetricsData(store_embeddings=False)
         cand.add(cand_emb)
@@ -183,8 +204,8 @@ class AudioMetrics:
         stem_cand = metrics.get(ItemCategory.stem)
         apa_cand = metrics.get(ItemCategory.aligned)
         stem_ref = self.stem_reference
-        apa_ref = self.apa_reference
-        apa_anti_ref = self.apa_anti_reference
+        apa_ref = self.mix_reference
+        apa_anti_ref = self.mix_anti_reference
 
         if self.stems_mode and stem_cand is None:
             raise ValueError("No stem candidate embeddings were computed")
@@ -241,10 +262,10 @@ class AudioMetrics:
             # assert (
             #     self.stem_reference
             # ), f"To compute stem metrics, specify one or more of {self._need_stems}"
-            assert (
-                self.stem_reference.n
-            ), "Call AudioMetrics.add_reference() at least once before evaluating candidates"
+            assert self.stem_reference.n, (
+                "Call AudioMetrics.add_reference() at least once before evaluating candidates"
+            )
         if self.need_apa:
-            assert (
-                self.apa_reference.n
-            ), "Call AudioMetrics.add_reference() at least once before evaluating candidates"
+            assert self.mix_reference.n, (
+                "Call AudioMetrics.add_reference() at least once before evaluating candidates"
+            )

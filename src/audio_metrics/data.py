@@ -18,14 +18,14 @@ class AudioMetricsData:
         self.radii = {}
         self.dtype = torch.float64
 
-    # def save(self, fp):
-    #     torch.save(self.__dict__, fp)
+    def serialize(self):
+        return self.__dict__
 
-    # @classmethod
-    # def load(cls, fp):
-    #     self = cls()
-    #     self.__dict__.update(torch.load(fp, weights_only=True))
-    #     return self
+    @classmethod
+    def deserialize(cls, state):
+        self = cls()
+        self.__dict__.update(state)
+        return self
 
     def add(self, embeddings):
         mean = torch.mean(embeddings, 0).to(dtype=self.dtype)

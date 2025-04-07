@@ -1,5 +1,7 @@
 import torch
 
+CLAP_MUSIC_CHECKPOINT_URL = "https://huggingface.co/lukewys/laion_clap/resolve/main/music_audioset_epoch_15_esc_90.14.pt"
+
 
 class CLAP:
     def __init__(self, ckpt, model_name="clap"):

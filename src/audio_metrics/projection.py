@@ -17,6 +17,9 @@ class IncrementalPCA(IncrementalPCA_orig):
         "float64": ["noise_variance_"],
     }
 
+    def transform(self, x):
+        return torch.as_tensor(super().transform(x))
+
     def __getstate__(self):
         state = super().__getstate__()
         for k in self.conversions["array"]:
