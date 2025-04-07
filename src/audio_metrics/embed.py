@@ -76,7 +76,6 @@ def embedding_pipeline(
     waveforms,
     embedder,
     gpu_handler=None,
-    projection=None,
     apa_mode: Literal["reference", "candidate"] | None = None,
     stems_mode: bool = False,
     store_mix_embeddings: bool = False,

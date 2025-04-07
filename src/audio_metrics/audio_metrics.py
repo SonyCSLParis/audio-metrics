@@ -86,7 +86,6 @@ class AudioMetrics:
             reference,
             embedder=self.embedder,
             gpu_handler=self.gpu_handler,
-            projection=self.projection,
             apa_mode="reference" if self.need_apa else None,
             stems_mode=self.stems_mode,
             store_mix_embeddings=self.store_mix_embeddings,
