@@ -1,5 +1,5 @@
 import torch
-import prdc
+from audio_metrics.metrics.density_coverage import nearest_neighbour_distances
 
 
 def ensure_tensor(x, device=None):
@@ -39,9 +39,7 @@ class AudioMetricsData:
         key = f"radii_{k_neighbor}"
         radii = self.radii.get(key)
         if radii is None and self.embeddings is not None:
-            radii = prdc.compute_nearest_neighbour_distances(
-                self.embeddings.numpy(), k_neighbor
-            )
+            radii = nearest_neighbour_distances(self.embeddings, k_neighbor)
             self.radii[key] = radii
         return radii
 

@@ -4,6 +4,7 @@ from audio_metrics.embed import embedding_pipeline, ItemCategory
 from audio_metrics.data import AudioMetricsData
 from audio_metrics.metrics.fad import frechet_distance
 from audio_metrics.metrics.kid import kernel_distance
+from audio_metrics.metrics.density_coverage import compute_prdc
 from audio_metrics.metrics.apa import apa, apa_compute_d_x_xp
 from audio_metrics.projection import IncrementalPCA
 from audio_metrics.embedders.clap import CLAP
@@ -12,7 +13,7 @@ from audio_metrics.util.gpu_parallel import GPUWorkerHandler
 
 class AudioMetrics:
     # metrics that need access to the full embeddings (not just mu, sigma)
-    _need_embeddings = set(("kd", "precision", "recall", "coverage", "density"))
+    _need_embeddings = set(("kd", "precision", "prdc"))
     # for serialization
     _amd = (
         "stem_reference",
@@ -233,7 +234,9 @@ class AudioMetrics:
         if "kd" in self.metrics:
             result.update(kernel_distance(stem_cand, stem_ref))
 
-        # TODO: prec, recall, density, coverage
+        if "prdc" in self.metrics:
+            k = max(1, min(10, len(stem_ref), len(stem_cand)))
+            result.update(compute_prdc(stem_ref, stem_cand, k))
 
         if self.need_apa:
             result["apa"] = apa(
@@ -251,11 +254,7 @@ class AudioMetrics:
         return None
 
     def get_embedder(self):
-        clap_cktpt = (
-            "/home/maarten/.cache/audio_metrics/music_audioset_epoch_15_esc_90.14.pt"
-        )
-        # return benedict({"sr": 48000})
-        return CLAP(ckpt=clap_cktpt)
+        return CLAP()
 
     def assert_reference(self):
         if self.stems_mode:
