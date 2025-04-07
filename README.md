@@ -51,8 +51,8 @@ The measures can be combined with embeddings from any of the following models:
    go to step 4), or create and activate a new environment like this:
 
    ```
-   python -m venv venv
-   source venv/bin/activate
+   python -m venv .venv
+   source .venv/bin/activate
    ```
 
 4. Install the package and its dependencies:
@@ -66,9 +66,46 @@ The measures can be combined with embeddings from any of the following models:
 The following examples demonstrate the use of the package. Both examples are
 also included under the `./examples` directory.
 
-## 
 
-The Audio Prompt Adherence measures operates on sets whose elements are
+```python
+import torch
+from audio_metrics import AudioMetrics
+
+sr = 48000
+n_seconds = 10
+
+# reference pairs of "context" and "accompaniment"
+reference = (torch.randn(n_seconds*sr, 2) for _ in range(1000))
+
+# candidate pairs of "context" and "accompaniment"
+candidate = (torch.randn(n_seconds*sr, 2) for _ in range(1000))
+
+
+metrics = AudioMetrics(metrics=['apa', 'fad'])
+metrics.add_reference(reference)
+
+result = metrics(candidate)
+
+
+
+```
+
+### Accompaniment Prompt Adherence
+
+```python
+from pathlib import Path
+import json
+import torch
+from audio_metrics import (
+    async_audio_loader,
+    multi_audio_slicer,
+    EmbedderPipeline,
+    AudioMetrics,
+    CLAP,
+)
+from audio_metrics.example_utils import generate_audio_samples
+
+The Accompaniment Prompt Adherence measures operates on sets whose elements are
 **pairs** of audio tracks, typically a **mix** and an **accompaniment**, and
 quantifies how well the accompaniment fits to the mix.
  
