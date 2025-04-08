@@ -47,7 +47,7 @@ def download_and_save(url, outfile):
         unit_scale=True,
         leave=True,
         miniters=1,
-        desc=f"Downloading {qurl.split('/')[-1]}",
+        desc=f"Downloading {url.split('/')[-1]} to {Path(outfile).parent}",
     ) as t:
         request.urlretrieve(
             url,
