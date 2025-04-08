@@ -84,5 +84,6 @@ class AudioMetricsData:
 
     def __add__(self, other):
         new = AudioMetricsData()
+        new += self
         new += other
         return new
