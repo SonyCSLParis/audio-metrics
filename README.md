@@ -11,7 +11,7 @@ It features the following metrics:
 
 * Density and Coverage (see https://arxiv.org/abs/2002.09797 )
 
-* Accompaniment Prompt Adherence (see https://arxiv.org/abs/2404.00775 )
+* Accompaniment Prompt Adherence (see https://arxiv.org/abs/2503.06346 )
 
 The measures have in common that they compare a **set** of candidate audio
 tracks against a **set** of reference tracks, rather than evaluating individual
