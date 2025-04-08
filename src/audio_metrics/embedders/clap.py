@@ -11,7 +11,6 @@ class CLAP:
         self.model_name = model_name
         if ckpt is None:
             ckpt = get_file(CLAP_MUSIC_CHECKPOINT_URL)
-            print(ckpt)
         self.clap = laion_clap.CLAP_Module(enable_fusion=False, amodel="HTSAT-base")
         self.clap.load_ckpt(ckpt, verbose=False)
 
