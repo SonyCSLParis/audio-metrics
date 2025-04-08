@@ -191,6 +191,9 @@ class AudioMetrics:
         return ref, anti_ref, cand
 
     def __call__(self, candidate):
+        return self.evaluate(candidate)
+
+    def evaluate(self, candidate):
         self.assert_reference()
 
         metrics = embedding_pipeline(

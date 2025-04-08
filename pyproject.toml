@@ -20,6 +20,7 @@ dependencies = [
 	"resampy",
 	"tqdm",
 	"rich",
+	"musdb",
 	"appdirs",
 ]
 
