@@ -28,12 +28,26 @@ class AudioMetricsData:
         return self
 
     def add(self, embeddings):
-        mean = torch.mean(embeddings, 0).to(dtype=self.dtype)
-        cov = torch.cov(embeddings.T).to(dtype=self.dtype)
         n = len(embeddings)
+        mean = torch.mean(embeddings, 0).to(dtype=self.dtype)
+        if n == 1:
+            cov = torch.zeros((1, 1), dtype=self.dtype)
+        else:
+            cov = torch.cov(embeddings.T).to(dtype=self.dtype)
         self._update_stats(mean, cov, n)
         if self.store_embeddings:
             self._update_embeddings(embeddings)
+
+    def recompute_stats(self):
+        # TODO: obsolete this function by doing lazy stats updates when
+        # self.store_embeddings=True
+        if self.embeddings is not None:
+            self.n = len(self.embeddings)
+            self.mean = torch.mean(self.embeddings, 0).to(dtype=self.dtype)
+            if self.n == 1:
+                self.cov = torch.zeros((1, 1), dtype=self.dtype)
+            else:
+                self.cov = torch.cov(self.embeddings.T).to(dtype=self.dtype)
 
     def get_radii(self, k_neighbor):
         key = f"radii_{k_neighbor}"
@@ -45,7 +59,7 @@ class AudioMetricsData:
 
     def _update_embeddings(self, embeddings):
         if self.embeddings is None:
-            self.embeddings = embeddings
+            self.embeddings = embeddings.clone()
             return
         self.embeddings = torch.cat((self.embeddings, embeddings))
 
