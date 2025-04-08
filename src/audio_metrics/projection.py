@@ -21,7 +21,7 @@ class IncrementalPCA(IncrementalPCA_orig):
         return torch.as_tensor(super().transform(x))
 
     def __getstate__(self):
-        state = super().__getstate__()
+        state = super().__getstate__().copy()
         for k in self.conversions["array"]:
             if k in state:
                 state[k] = torch.as_tensor(state[k])

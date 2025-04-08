@@ -62,7 +62,7 @@ class AudioMetrics:
         self.stem_reference_pca = None
 
     def save_state(self, fp: str | Path):
-        state = self.__getstate__()
+        state = self.__getstate__().copy()
         del state["embedder"]
         del state["gpu_handler"]
         for attr in self._amd:
@@ -72,7 +72,7 @@ class AudioMetrics:
         for attr in ("stem_projection", "mix_projection"):
             item = state.get(attr)
             if item:
-                state[attr] = item.__getstate__()
+                state[attr] = item.__getstate__().copy()
         torch.save(state, fp)
 
     def load_state(self, fp: str | Path):
@@ -84,7 +84,8 @@ class AudioMetrics:
         for attr in ("stem_projection", "mix_projection"):
             item = state.get(attr)
             if item:
-                state[attr] = getattr(self, attr).__setstate__(item)
+                getattr(self, attr).__setstate__(item)
+                del state[attr]
         self.__dict__.update(state)
 
     @property
@@ -117,7 +118,7 @@ class AudioMetrics:
             # invalidate cache:
             self.stem_reference_pca = None
             self.stem_reference += stem_reference
-
+            self.stem_reference.recompute_stats()
         mix_reference = metrics.get(ItemCategory.aligned)
         if mix_reference is not None:
             # invalidate cache:
