@@ -154,16 +154,17 @@ def embedding_pipeline(
         shuffled_items = None
     # create a stream of aligned/misaligned items
     items = serialize_items(items, shuffled_items, apa_mode, stems_mode)
-    # mix the context stem pairs
-    items = cpu_parallel(
-        items,
-        _mix_pair,
-        n_workers=64,
-        desc="mixing pairs",
-        discard_input=False,
-        in_buffer_size=256,
-        out_buffer_size=256,
-    )
+    if apa_mode is not None:
+        # mix the context stem pairs
+        items = cpu_parallel(
+            items,
+            _mix_pair,
+            n_workers=64,
+            desc="mixing pairs",
+            discard_input=False,
+            in_buffer_size=256,
+            out_buffer_size=256,
+        )
 
     # accumulate into batches
     items = batch_accumulator(items, batch_size=32)
