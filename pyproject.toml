@@ -1,6 +1,6 @@
 [project]
 name = "audio-metrics"
-version = "0.1.0"
+version = "0.2.0"
 description = "Metrics to measure the quality of audio"
 authors = [{name = "Maarten Grachten"}]
 readme = "README.md"
@@ -9,6 +9,7 @@ dependencies = [
 	"torch<2.6",
 	"torchvision",
 	"laion-clap @ git+https://github.com/LAION-AI/CLAP.git",
+    "opt-einsum",
 	"soundfile",
 	"pyloudnorm",
 	"scikit-learn",
@@ -31,13 +32,14 @@ line-length = 90
 [tool.ruff]
 line-length = 90
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
-    "ipdb>=0.13.13",
-    "ipython>=8.34.0",
-    "opt-einsum>=3.4.0",
-    "python-benedict>=0.34.1",
-    "python-lsp-server>=1.12.2",
-    "ruff>=0.11.1",
+    "ipdb",
+    "ipython",
+    "python-lsp-server",
+    "python-lsp-ruff",
+    "ruff",
+	"flake8",
+	"pylint"
 ]
 
