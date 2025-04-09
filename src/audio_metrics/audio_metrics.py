@@ -7,6 +7,7 @@ from audio_metrics.metrics.kid import kernel_distance
 from audio_metrics.metrics.density_coverage import compute_prdc
 from audio_metrics.metrics.apa import apa, apa_compute_d_x_xp
 from audio_metrics.projection import IncrementalPCA
+from audio_metrics.mix_functions import MIX_FUNCTIONS, DEFAULT_MIX_FUNCTION
 from audio_metrics.embedders import EMBEDDERS, DEFAULT_EMBEDDER
 from audio_metrics.util.gpu_parallel import GPUWorkerHandler
 
@@ -25,7 +26,12 @@ class AudioMetrics:
     )
 
     def __init__(
-        self, metrics=["apa", "fad"], n_pca=None, device_indices=None, embedder=None
+        self,
+        metrics=["apa", "fad"],
+        n_pca=None,
+        device_indices=None,
+        embedder=None,
+        mix_function=None,
     ):
         self.gpu_handler = self._get_gpu_handler(device_indices)
         self.metrics = metrics
@@ -42,6 +48,11 @@ class AudioMetrics:
             self.embedder = self.get_embedder(embedder)
         else:
             self.embedder = embedder
+
+        if mix_function is None or isinstance(mix_function, str):
+            self.mix_function = self.get_mix_function(mix_function)
+        else:
+            self.mix_function = mix_function
 
         self.apa_d_x_xp = None
 
@@ -106,6 +117,7 @@ class AudioMetrics:
         metrics = embedding_pipeline(
             reference,
             embedder=self.embedder,
+            mix_function=self.mix_function,
             gpu_handler=self.gpu_handler,
             apa_mode="reference" if self.need_apa else None,
             stems_mode=self.stems_mode,
@@ -199,6 +211,7 @@ class AudioMetrics:
         metrics = embedding_pipeline(
             candidate,
             embedder=self.embedder,
+            mix_function=self.mix_function,
             gpu_handler=self.gpu_handler,
             apa_mode="candidate" if self.need_apa else None,
             stems_mode=self.stems_mode,
@@ -256,6 +269,15 @@ class AudioMetrics:
         if device_indices or device_indices is None:
             return GPUWorkerHandler(device_indices)
         return None
+
+    def get_mix_function(self, mix_function):
+        if mix_function is None:
+            mix_function = DEFAULT_MIX_FUNCTION
+        func = MIX_FUNCTIONS.get(mix_function)
+        if func is None:
+            msg = f"Unknown mix_function {mix_function}, must be one of {MIX_FUNCTIONS.keys()}"
+            raise ValueError(msg)
+        return func
 
     def get_embedder(self, embedder):
         if embedder is None:

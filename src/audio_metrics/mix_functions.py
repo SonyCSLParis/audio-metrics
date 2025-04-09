@@ -236,3 +236,4 @@ MIX_FUNCTIONS = dict(
     L1=partial(mix_tracks_loudness, stem_db_red=-3, out_db=-20),
     L2=partial(mix_tracks_loudness, stem_db_red=-6, out_db=-20),
 )
+DEFAULT_MIX_FUNCTION = "L0"

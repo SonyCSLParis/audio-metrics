@@ -49,6 +49,7 @@ candidate_bad = list(misalign_pairs(candidate_good))
 
 am = AudioMetrics(
     embedder="laion_clap_music_l-2",
+    mix_function="L2",
     metrics=[
         # prdc and fad evaluated the stems only (contexts are ignored)
         "prdc",  # precision, reacll, density, coverage

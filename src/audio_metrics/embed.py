@@ -75,6 +75,7 @@ def mix_pair(data, mix_func, sr):
 def embedding_pipeline(
     waveforms,
     embedder,
+    mix_function,
     gpu_handler=None,
     apa_mode: Literal["reference", "candidate"] | None = None,
     stems_mode: bool = False,
@@ -127,7 +128,7 @@ def embedding_pipeline(
     win_buffer_size = 1000
     win_min_age = 100
     seed = 1243
-    _mix_pair = partial(mix_pair, mix_func=MIX_FUNCTIONS["L0"], sr=embedder.sr)
+    _mix_pair = partial(mix_pair, mix_func=mix_function, sr=embedder.sr)
 
     items = waveforms
 
