@@ -42,8 +42,8 @@ candidate_good = list(cpu_parallel(musdb_test, create_ctx_stem_pair, n_workers=1
 candidate_bad = list(misalign_pairs(candidate_good))
 
 am = AudioMetrics(
-    embedder="laion_clap_music_l-2",
-    mix_function="L2",
+    embedder="laion_clap_music",
+    mix_function="L0",
     metrics=[
         # prdc and fad evaluated the stems only (contexts are ignored)
         "prdc",  # precision, reacll, density, coverage
@@ -57,10 +57,10 @@ am = AudioMetrics(
 am.add_reference(reference)
 print()
 result = am.evaluate(candidate_good)
-print("Metrics for original test set")
+print("Metrics for MUSDB test set")
 print(result)
 print()
 
 result = am.evaluate(candidate_bad)
-print("Metrics for misaligned test set")
+print("Metrics for MUSDB test set with misaligned (context, stem) pairs")
 print(result)
