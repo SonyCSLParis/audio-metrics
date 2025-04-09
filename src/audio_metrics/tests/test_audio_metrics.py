@@ -28,6 +28,106 @@ def mix_func(audio, sr=None):
     return audio.mean(axis=1)
 
 
+@pytest.fixture
+def audio_metrics_instance():
+    kwargs = dict(
+        embedder=DummyEmbedder(),
+        mix_function=mix_func,
+        metrics=["fad", "apa"],
+        n_pca=10,
+    )
+    am = AudioMetrics(**kwargs)
+    return am
+
+
+@pytest.fixture
+def inputs_1():
+    sr = 16000
+    n_seconds = 5
+    reference = np.random.random((100, n_seconds * sr, 2))
+    candidate = np.random.random((100, n_seconds * sr, 2))
+    return reference, candidate
+
+
+@pytest.fixture
+def inputs_2():
+    sr = 16000
+    n_seconds = 5
+    reference = (np.random.random((n_seconds * sr, 2)) for _ in range(100))
+    candidate = [np.random.random((n_seconds * sr, 2)) for _ in range(100)]
+    return reference, candidate
+
+
+@pytest.fixture
+def inputs_3():
+    sr = 16000
+    n_seconds = 5
+    reference = torch.randn((100, n_seconds * sr, 2))
+    candidate = torch.randn((100, n_seconds * sr, 2))
+    return reference, candidate
+
+
+def test_inputs_1(audio_metrics_instance, inputs_1):
+    am = audio_metrics_instance
+    am.reset_reference()
+    reference, candidate = inputs_1
+    am.add_reference(reference)
+    am.evaluate(candidate)
+
+
+def test_inputs_2(audio_metrics_instance, inputs_2):
+    am = audio_metrics_instance
+    am.reset_reference()
+    reference, candidate = inputs_2
+    am.add_reference(reference)
+    am.evaluate(candidate)
+
+
+def test_inputs_3(audio_metrics_instance, inputs_3):
+    am = audio_metrics_instance
+    am.reset_reference()
+    reference, candidate = inputs_3
+    am.add_reference(reference)
+    am.evaluate(candidate)
+
+
+@pytest.fixture
+def audio_metrics_instance_no_apa():
+    kwargs = dict(
+        embedder=DummyEmbedder(),
+        mix_function=mix_func,
+        metrics=["fad"],
+        n_pca=10,
+    )
+    am = AudioMetrics(**kwargs)
+    return am
+
+
+@pytest.fixture
+def inputs_stems_1():
+    sr = 16000
+    n_seconds = 5
+    reference = np.random.random((100, n_seconds * sr))
+    candidate = np.random.random((100, n_seconds * sr))
+    return reference, candidate
+
+
+def test_inputs_4(audio_metrics_instance_no_apa, inputs_stems_1):
+    am = audio_metrics_instance_no_apa
+    am.reset_reference()
+    reference, candidate = inputs_stems_1
+    am.add_reference(reference)
+    am.evaluate(candidate)
+
+
+def test_inputs_5(audio_metrics_instance, inputs_stems_1):
+    am = audio_metrics_instance
+    am.reset_reference()
+    reference, candidate = inputs_stems_1
+    with pytest.raises(ValueError):
+        am.add_reference(reference)
+
+
 def test_serialization():
     kwargs = dict(
         embedder=DummyEmbedder(),

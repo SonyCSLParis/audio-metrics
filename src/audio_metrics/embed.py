@@ -1,20 +1,18 @@
+from collections.abc import Iterator
 from typing import Literal
 from functools import partial
 from enum import IntEnum
 from itertools import tee
 from rich import print
 
-# import torch
+import torch
 import numpy as np
 
 from audio_metrics.util.audio import multi_audio_slicer
 from audio_metrics.util.shuffle import shuffle_stream
 from audio_metrics.util.cpu_parallel import cpu_parallel
 from audio_metrics.util.gpu_parallel import gpu_parallel
-from audio_metrics.mix_functions import MIX_FUNCTIONS
-
-# from audio_metrics.embedders import CLAP
-from audio_metrics.data import AudioMetricsData
+from audio_metrics.data import AudioMetricsData, ensure_ndarray
 
 
 class ItemCategory(IntEnum):
@@ -44,18 +42,21 @@ def batch_accumulator(items, batch_size=32):
 
 
 def serialize_items(items1, items2=None, apa_mode=False, stems_mode=False):
-    msg = "When computing APA items should be tensors/arrays of shape [n_samples, 2] (pairing context and stem)"
     if items2 is None:
         item_pairs = ((item, None) for item in items1)
     else:
         item_pairs = zip(items1, items2)
 
     for item1, item2 in item_pairs:
-        # aligned pair
-        assert len(item1.shape) == 2, msg
+        item1 = ensure_ndarray(item1)
         if apa_mode:
+            # aligned pair
+            if not len(item1.shape) == 2:
+                msg = "When computing APA items should be tensors/arrays of shape [n_samples, 2] (pairing context and stem)"
+                raise ValueError(msg)
             yield {"audio": item1, "category": ItemCategory.aligned}
             if item2 is not None:
+                item2 = ensure_ndarray(item2)
                 # misaligned pair
                 assert len(item2.shape) == 2, msg
                 misaliged = np.column_stack((item1[:, 0], item2[:, 1]))
@@ -82,6 +83,11 @@ def embedding_pipeline(
     store_mix_embeddings: bool = False,
     store_stem_embeddings: bool = False,
     batch_size: int = 32,
+    win_dur: float = 5.0,
+    song_buffer_size: int = 100,
+    win_buffer_size: int = 1000,
+    win_min_age: int = 100,
+    seed: int | None = None,
 ):
     """
     # Input Data
@@ -122,14 +128,11 @@ def embedding_pipeline(
     all audio lengths are integer multiples of the window duration.
     """
 
-    win_dur = 5.0
-    song_buffer_size = 100
-    win_buffer_size = 1000
-    win_min_age = 100
-    seed = 1243
     _mix_pair = partial(mix_pair, mix_func=mix_function, sr=embedder.sr)
 
     items = waveforms
+    if not isinstance(items, Iterator):
+        items = iter(items)
 
     if apa_mode == "reference":
         # 1. shuffle songs

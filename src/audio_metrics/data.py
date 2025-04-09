@@ -1,11 +1,18 @@
+import numpy as np
 import torch
 from audio_metrics.metrics.density_coverage import nearest_neighbour_distances
 
 
-def ensure_tensor(x, device=None):
+def ensure_tensor(x: np.ndarray | torch.Tensor, device=None):
     if not isinstance(x, torch.Tensor):
         x = torch.as_tensor(x)
     return x.to(device, non_blocking=True) if device else x
+
+
+def ensure_ndarray(x: np.ndarray | torch.Tensor):
+    if isinstance(x, torch.Tensor):
+        x = x.cpu().numpy()
+    return x
 
 
 class AudioMetricsData:
