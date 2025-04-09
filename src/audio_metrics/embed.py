@@ -2,11 +2,12 @@ from collections.abc import Iterator
 from typing import Literal
 from functools import partial
 from enum import IntEnum
-from itertools import tee
+from itertools import tee, chain
 from rich import print
 
 import torch
 import numpy as np
+import resampy
 
 from audio_metrics.util.audio import multi_audio_slicer
 from audio_metrics.util.shuffle import shuffle_stream
@@ -19,6 +20,19 @@ class ItemCategory(IntEnum):
     aligned = 1
     misaligned = 2
     stem = 3
+
+
+def peek_iterator(it):
+    # Ensure it's an iterator
+    it = iter(it)
+    try:
+        first_element = next(it)
+    except StopIteration:
+        # The iterator is empty
+        return None, it
+    # Create a new iterator that "puts back" the first element.
+    new_it = chain([first_element], it)
+    return first_element, new_it
 
 
 def batch_accumulator(items, batch_size=32):
@@ -64,6 +78,10 @@ def serialize_items(items1, items2=None, apa_mode=False, stems_mode=False):
         if stems_mode:
             stem = item1[:, -1] if len(item1.shape) == 2 else item1
             yield {"audio": stem, "category": ItemCategory.stem}
+
+
+def resample(item, **kwargs):
+    return resampy.resample(ensure_ndarray(item["audio"]).T, item["sr"], **kwargs).T
 
 
 def mix_pair(data, mix_func, sr):
@@ -129,15 +147,25 @@ def embedding_pipeline(
     """
 
     _mix_pair = partial(mix_pair, mix_func=mix_function, sr=embedder.sr)
+    _resample = partial(resample, sr_new=embedder.sr, filter="kaiser_fast")
 
-    items = waveforms
-    if not isinstance(items, Iterator):
-        items = iter(items)
+    items = iter(waveforms)
 
     if apa_mode == "reference":
         # 1. shuffle songs
         items = shuffle_stream(
             items, buffer_size=song_buffer_size, seed=seed, desc="shuffling songs"
+        )
+
+    # resample if the first item is a dict (assume all items are dicts)
+    first_item, items = peek_iterator(items)
+    if isinstance(first_item, dict):
+        items = cpu_parallel(
+            items,
+            _resample,
+            n_workers=64,
+            in_buffer_size=256,
+            out_buffer_size=256,
         )
 
     # 2. slice songs into windows
@@ -156,6 +184,7 @@ def embedding_pipeline(
         )
     else:
         shuffled_items = None
+
     # create a stream of aligned/misaligned items
     items = serialize_items(items, shuffled_items, apa_mode, stems_mode)
     if apa_mode is not None:

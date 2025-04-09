@@ -32,11 +32,12 @@ class AudioMetrics:
         device_indices=None,
         embedder=None,
         mix_function=None,
+        win_dur=5.0,
     ):
         self.gpu_handler = self._get_gpu_handler(device_indices)
         self.metrics = metrics
         self.need_apa = "apa" in self.metrics
-
+        self.win_dur = win_dur
         if n_pca is None:
             self.stem_projection = None
             self.mix_projection = None
@@ -124,6 +125,7 @@ class AudioMetrics:
             stems_mode=self.stems_mode,
             store_mix_embeddings=self.store_mix_embeddings,
             store_stem_embeddings=self.store_stem_embeddings,
+            win_dur=self.win_dur,
         )
 
         stem_reference = metrics.get(ItemCategory.stem)
@@ -218,6 +220,7 @@ class AudioMetrics:
             stems_mode=self.stems_mode,
             store_mix_embeddings=self.store_mix_embeddings,
             store_stem_embeddings=self.store_stem_embeddings,
+            win_dur=self.win_dur,
         )
 
         stem_cand = metrics.get(ItemCategory.stem)
@@ -291,14 +294,16 @@ class AudioMetrics:
         return cls(**kwargs)
 
     def assert_reference(self):
+        msg = (
+            "The reference dataset is empty. This can have various causes:"
+            "  - You have not called AudioMetrics.add_reference()"
+            "  - You have called AudioMetrics.add_reference() with an empty dataset"
+            "  - The duration of your audio is shorter than `win_dur` ({self.win_dur}s)."
+            "    (You can specify your own `win_dur` when instantiating AudioMetrics)"
+        )
         if self.stems_mode:
-            # assert (
-            #     self.stem_reference
-            # ), f"To compute stem metrics, specify one or more of {self._need_stems}"
-            assert self.stem_reference.n, (
-                "Call AudioMetrics.add_reference() at least once before evaluating candidates"
-            )
+            if self.stem_reference.n is None:
+                raise ValueError(msg)
         if self.need_apa:
-            assert self.mix_reference.n, (
-                "Call AudioMetrics.add_reference() at least once before evaluating candidates"
-            )
+            if self.mix_reference.n is None:
+                raise ValueError(msg)

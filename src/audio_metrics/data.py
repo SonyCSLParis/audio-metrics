@@ -95,10 +95,11 @@ class AudioMetricsData:
 
     def __iadd__(self, other):
         assert isinstance(other, AudioMetricsData)
+        if other.n is None:
+            return self
         if self.n is None:
             self.store_embeddings = other.store_embeddings
         assert self.store_embeddings == other.store_embeddings
-        assert other.n is not None
         self._update_stats(other.mean, other.cov, other.n)
         if self.store_embeddings:
             self._update_embeddings(other.embeddings)
