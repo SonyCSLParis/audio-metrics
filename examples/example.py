@@ -6,12 +6,11 @@ import musdb
 from audio_metrics.util.cpu_parallel import cpu_parallel
 from audio_metrics import AudioMetrics
 
-# the sample rate of the clap encoder
+# the sample rate of the clap encoder we will use below
 sr = 48000
 
+
 # data preparation helper functions:
-
-
 def create_ctx_stem_pair(song, rng=None):
     # pick a random stem from the song, and take the average of the remaining
     # stems as context; convert stereo to mono
@@ -41,11 +40,6 @@ musdb_test = musdb.DB(subsets="test", download=True, sample_rate=sr)
 reference = cpu_parallel(musdb_train, create_ctx_stem_pair, n_workers=16)
 candidate_good = list(cpu_parallel(musdb_test, create_ctx_stem_pair, n_workers=16))
 candidate_bad = list(misalign_pairs(candidate_good))
-
-# n_seconds = 5
-# reference = (np.random.random((n_seconds * sr, 2)) for _ in range(100))
-# candidate_good = (np.random.random((n_seconds * sr, 2)) for _ in range(100))
-# candidate_bad = (np.random.random((n_seconds * sr, 2)) for _ in range(100))
 
 am = AudioMetrics(
     embedder="laion_clap_music_l-2",

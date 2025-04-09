@@ -74,6 +74,7 @@ class AudioMetrics:
 
     def save_state(self, fp: str | Path):
         state = self.__getstate__().copy()
+        del state["mix_function"]
         del state["embedder"]
         del state["gpu_handler"]
         for attr in self._amd:

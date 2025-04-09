@@ -123,7 +123,6 @@ def embedding_pipeline(
     """
 
     win_dur = 5.0
-    sr = 48000
     song_buffer_size = 100
     win_buffer_size = 1000
     win_min_age = 100
@@ -139,7 +138,7 @@ def embedding_pipeline(
         )
 
     # 2. slice songs into windows
-    items = multi_audio_slicer(items, win_dur, sr=sr)
+    items = multi_audio_slicer(items, win_dur, sr=embedder.sr)
 
     if apa_mode == "reference":
         # duplicate the iterator in order to create misaligned pairs
