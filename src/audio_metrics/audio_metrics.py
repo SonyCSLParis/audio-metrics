@@ -7,7 +7,7 @@ from audio_metrics.metrics.kid import kernel_distance
 from audio_metrics.metrics.density_coverage import compute_prdc
 from audio_metrics.metrics.apa import apa, apa_compute_d_x_xp
 from audio_metrics.projection import IncrementalPCA
-from audio_metrics.embedders.clap import CLAP
+from audio_metrics.embedders import EMBEDDERS, DEFAULT_EMBEDDER
 from audio_metrics.util.gpu_parallel import GPUWorkerHandler
 
 
@@ -38,8 +38,8 @@ class AudioMetrics:
             self.stem_projection = IncrementalPCA(n_components=n_pca)
             self.mix_projection = IncrementalPCA(n_components=n_pca)
 
-        if embedder is None:
-            self.embedder = self.get_embedder()
+        if embedder is None or isinstance(embedder, str):
+            self.embedder = self.get_embedder(embedder)
         else:
             self.embedder = embedder
 
@@ -257,8 +257,15 @@ class AudioMetrics:
             return GPUWorkerHandler(device_indices)
         return None
 
-    def get_embedder(self):
-        return CLAP()
+    def get_embedder(self, embedder):
+        if embedder is None:
+            embedder = DEFAULT_EMBEDDER
+        info = EMBEDDERS.get(embedder)
+        if info is None:
+            msg = f"Unknown embedder {embedder}, must be one of {EMBEDDERS.keys()}"
+            raise ValueError(msg)
+        cls, kwargs = info
+        return cls(**kwargs)
 
     def assert_reference(self):
         if self.stems_mode:

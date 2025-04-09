@@ -56,7 +56,7 @@ def download_and_save(url, outfile):
         )
 
 
-def get_file(url):
+def download_url(url):
     cache_dir = Path(appdirs.user_cache_dir(PACKAGE_NAME))
     name = url.rsplit("/", maxsplit=1)[-1]
     fp = cache_dir / name

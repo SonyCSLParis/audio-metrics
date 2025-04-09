@@ -31,7 +31,8 @@ class AudioMetricsData:
         n = len(embeddings)
         mean = torch.mean(embeddings, 0).to(dtype=self.dtype)
         if n == 1:
-            cov = torch.zeros((1, 1), dtype=self.dtype)
+            d = embeddings.shape[-1]
+            cov = torch.zeros((d, d), dtype=self.dtype)
         else:
             cov = torch.cov(embeddings.T).to(dtype=self.dtype)
         self._update_stats(mean, cov, n)

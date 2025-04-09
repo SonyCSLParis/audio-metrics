@@ -80,6 +80,7 @@ def embedding_pipeline(
     stems_mode: bool = False,
     store_mix_embeddings: bool = False,
     store_stem_embeddings: bool = False,
+    batch_size: int = 32,
 ):
     """
     # Input Data
@@ -167,7 +168,7 @@ def embedding_pipeline(
         )
 
     # accumulate into batches
-    items = batch_accumulator(items, batch_size=32)
+    items = batch_accumulator(items, batch_size=batch_size)
 
     # compute the clap embeddings
     items = gpu_parallel(
