@@ -1,3 +1,4 @@
+from .vggish import VGGish
 from .clap import (
     LaionCLAP,
     LAION_CLAP_MUSIC_SPEECH_CHECKPOINT_URL,
@@ -45,6 +46,10 @@ EMBEDDERS = {
             "ckpt": LAION_CLAP_MUSIC_SPEECH_CHECKPOINT_URL,
             "layer": LAION_CLAP_LAYERS[1],
         },
+    ),
+    "vggish": (
+        VGGish,
+        {},
     ),
 }
 

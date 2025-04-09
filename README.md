@@ -33,8 +33,6 @@ The measures can be combined with embeddings from any of the following models:
   classification. 128-dimensional embeddings from the last feature layer before
   the classification layer.
 
-* OpenL3 - https://github.com/marl/openl3 Trained on music
-
 * Laion CLAP - https://github.com/LAION-AI/CLAP using either the checkpoint
   trained on music and speech, or the checkpoint trained on music only;
   Embeddings from the last three layers (512, 512, and 128-dimensional)

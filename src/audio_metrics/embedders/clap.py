@@ -7,12 +7,6 @@ LAION_CLAP_MUSIC_CHECKPOINT_URL = "https://huggingface.co/lukewys/laion_clap/res
 LAION_CLAP_LAYERS = ["audio_projection.0", "audio_projection.2"]
 
 
-def activation_hook(model, input, output, storage, name):
-    # act_dict[name] = output.cpu().unsqueeze(1).numpy()
-    # act_dict[name] = output
-    storage[name] = output
-
-
 class LaionCLAP:
     def __init__(self, ckpt=None, layer=None):
         import laion_clap
@@ -59,33 +53,15 @@ class LaionCLAP:
             audio = audio.unsqueeze(0)
         return audio
 
-    # def _register_hooks(self, act_dict):
-    #     hooks = []
-    #     for layer in self.layers:
-    #         hooks.append(
-    #             self.clap.get_submodule(f"model.{layer}").register_forward_hook(
-    #                 self._get_activation_hook(layer, act_dict)
-    #             )
-    #         )
-    #     return hooks
     def _register_hook(self, hook_func):
         hook = self.clap.get_submodule(f"model.{self.layer}").register_forward_hook(
             hook_func
         )
         return hook
 
-    # def _register_hook(self, result_dict):
-    #     hook = self.clap.get_submodule(f"model.{self.layer}").register_forward_hook(
-    #         self._get_activation_hook(self.layer, result_dict)
-    #     )
-    #     return hook
 
-    def _get_activation_hook(self, name, act_dict):
-        def hook(model, input, output):
-            # act_dict[name] = output.cpu().unsqueeze(1).numpy()
-            act_dict[name] = output
-
-        return hook
+def activation_hook(model, input, output, storage, name):
+    storage[name] = output
 
 
 CLAP = LaionCLAP

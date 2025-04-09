@@ -206,7 +206,7 @@ def embedding_pipeline(
     items = gpu_parallel(
         items,
         embedder,
-        desc="computing clap",
+        desc="computing embeddings",
         discard_input=False,
         gpu_worker_handler=gpu_handler,
         in_buffer_size=256,
