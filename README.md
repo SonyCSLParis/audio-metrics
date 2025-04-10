@@ -84,6 +84,7 @@ metrics = AudioMetrics(
         "fad",  # frechet audio distance
         "kd",  # kernel distance
     ],
+    input_sr=sr,
 )
 metrics.add_reference(reference)
 
@@ -99,6 +100,7 @@ candidate = (np.random.random((window_len, 2)) for _ in range(n_windows))
 # stem-only metrics (like FAD), can be computed simultaneously with APA
 metrics = AudioMetrics(
     metrics=["fad", "apa"],
+    input_sr=sr,
 )
 metrics.add_reference(reference)
 print(metrics.evaluate(candidate))
