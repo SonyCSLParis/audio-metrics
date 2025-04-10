@@ -77,10 +77,7 @@ class AudioPromptAdherence:
         self.n_pca = n_pca
         self.pca_whiten = pca_whiten
         self.mix_func = MIX_FUNCTIONS.get(mix_func, "L2")
-        self._emb_key = "emb"
-        embedders = {
-            self._emb_key: self._get_embedder(embedder, layer=layer, device=device)
-        }
+        embedders = {"emb": self._get_embedder(embedder, layer=layer, device=device)}
         self.embed_kwargs = {
             "combine_mode": "average",
             "batch_size": 10,
@@ -157,10 +154,7 @@ class AudioPromptAdherence:
             if emb == Embedder.clap_music:
                 clap_url = CLAP_MUSIC_CHECKPOINT_URL
             return CLAP(
-                device,
-                intermediate_layers=layer is not None,
-                checkpoint_url=clap_url,
-                layer=layer,
+                device, intermediate_layers=layer is not None, checkpoint_url=clap_url
             )
         raise NotImplementedError(f"Unsupported embedder {emb}")
 
@@ -192,15 +186,9 @@ class AudioPromptAdherence:
     def compare_to_background(self, audio_pairs):
         pairs = list(audio_pairs)
         prog = tqdm(total=None, desc="computing candidate embeddings")
-        embeddings = self._make_emb(pairs, prog)
-        return self.compare_embeddings_to_background(embeddings)
-
-    def compare_embeddings_to_background(self, embeddings):
-        if not isinstance(embeddings, dict):
-            embeddings = {(self._emb_key, self.layer): embeddings}
-
-        d1 = self.metrics_1.compare_to_background(embeddings)
-        d2 = self.metrics_2.compare_to_background(embeddings)
+        emb = self._make_emb(pairs, prog)
+        d1 = self.metrics_1.compare_to_background(emb)
+        d2 = self.metrics_2.compare_to_background(emb)
         key = self._key
         m_x_y = max(0, d1[key])
         m_xp_y = max(0, d2[key])

@@ -43,14 +43,13 @@ def get_model(device, checkpoint_url):
 
 
 class CLAP(Embedder):
-    def __init__(self, device, intermediate_layers=True, checkpoint_url=None, layer=None):
+    def __init__(self, device, intermediate_layers=True, checkpoint_url=None):
         super().__init__(sr=SR, mono=True)
         if checkpoint_url is None:
             checkpoint_url = CLAP_MUSIC_CHECKPOINT_URL
         self.model = get_model(device, checkpoint_url)
         self.device = device
         self.activations = defaultdict(list)
-
         if intermediate_layers:
             self.layers = [
                 "audio_projection.0",
@@ -60,10 +59,6 @@ class CLAP(Embedder):
             self.layers = []
         self.out_label = "output"
         self.names = self.layers + [self.out_label]
-
-        self.layer = layer
-        if self.layer is not None:
-            assert layer in self.names, f"layer {layer} must be one of {self.names}"
 
     def embed(self, items, same_size=False, batch_size=10):
         audio_sr_pairs = (self.preprocess(item) for item in items)
@@ -103,11 +98,7 @@ class CLAP(Embedder):
 
     def _register_hooks(self, act_dict):
         hooks = []
-        if self.layer is not None:
-            layers = (self.layer,)
-        else:
-            layers = self.layers
-        for layer in layers:
+        for layer in self.layers:
             hooks.append(
                 self.model.get_submodule(f"model.{layer}").register_forward_hook(
                     self._get_activation_hook(layer, act_dict)
@@ -124,9 +115,8 @@ class CLAP(Embedder):
                 audio_emb = self.model.get_audio_embedding_from_data(
                     x=item, use_tensor=True
                 )
-            if self.layer is None or self.layer == self.out_label:
-                audio_emb = audio_emb.cpu().unsqueeze(1).numpy()
-                acts[self.out_label] = audio_emb
+            audio_emb = audio_emb.cpu().unsqueeze(1).numpy()
+            acts[self.out_label] = audio_emb
             yield acts.copy(), idx
             acts.clear()
         for hook in hooks:
