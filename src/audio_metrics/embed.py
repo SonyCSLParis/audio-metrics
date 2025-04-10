@@ -22,19 +22,6 @@ class ItemCategory(IntEnum):
     stem = 3
 
 
-def peek_iterator(it):
-    # Ensure it's an iterator
-    it = iter(it)
-    try:
-        first_element = next(it)
-    except StopIteration:
-        # The iterator is empty
-        return None, it
-    # Create a new iterator that "puts back" the first element.
-    new_it = chain([first_element], it)
-    return first_element, new_it
-
-
 def batch_accumulator(items, batch_size=32):
     audio = []
     category = []
@@ -81,7 +68,7 @@ def serialize_items(items1, items2=None, apa_mode=False, stems_mode=False):
 
 
 def resample(item, **kwargs):
-    return resampy.resample(ensure_ndarray(item["audio"]).T, item["sr"], **kwargs).T
+    return resampy.resample(ensure_ndarray(item).T, **kwargs).T
 
 
 def mix_pair(data, mix_func, sr):
@@ -106,6 +93,7 @@ def embedding_pipeline(
     win_buffer_size: int = 1000,
     win_min_age: int = 100,
     seed: int | None = None,
+    input_sr: int | None = None,
 ):
     """
     # Input Data
@@ -147,7 +135,9 @@ def embedding_pipeline(
     """
 
     _mix_pair = partial(mix_pair, mix_func=mix_function, sr=embedder.sr)
-    _resample = partial(resample, sr_new=embedder.sr, filter="kaiser_fast")
+    _resample = partial(
+        resample, sr_orig=input_sr, sr_new=embedder.sr, filter="kaiser_fast"
+    )
 
     items = iter(waveforms)
 
@@ -157,9 +147,8 @@ def embedding_pipeline(
             items, buffer_size=song_buffer_size, seed=seed, desc="shuffling songs"
         )
 
-    # resample if the first item is a dict (assume all items are dicts)
-    first_item, items = peek_iterator(items)
-    if isinstance(first_item, dict):
+    # resample if needed
+    if input_sr is not None and input_sr != embedder.sr:
         items = cpu_parallel(
             items,
             _resample,

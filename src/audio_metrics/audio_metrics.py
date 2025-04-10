@@ -33,11 +33,13 @@ class AudioMetrics:
         embedder=None,
         mix_function=None,
         win_dur=5.0,
+        input_sr=None,
     ):
         self.gpu_handler = self._get_gpu_handler(device_indices)
         self.metrics = metrics
         self.need_apa = "apa" in self.metrics
         self.win_dur = win_dur
+        self.input_sr = input_sr
         if n_pca is None:
             self.stem_projection = None
             self.mix_projection = None
@@ -126,6 +128,7 @@ class AudioMetrics:
             store_mix_embeddings=self.store_mix_embeddings,
             store_stem_embeddings=self.store_stem_embeddings,
             win_dur=self.win_dur,
+            input_sr=self.input_sr,
         )
 
         stem_reference = metrics.get(ItemCategory.stem)
@@ -221,6 +224,7 @@ class AudioMetrics:
             store_mix_embeddings=self.store_mix_embeddings,
             store_stem_embeddings=self.store_stem_embeddings,
             win_dur=self.win_dur,
+            input_sr=self.input_sr,
         )
 
         stem_cand = metrics.get(ItemCategory.stem)
