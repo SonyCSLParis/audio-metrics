@@ -12,6 +12,8 @@ import torch
 from tqdm import tqdm
 import logging
 
+from audio_metrics.data import AudioMetricsData, ensure_ndarray
+
 KEY_METRIC_KID_MEAN = "kernel_distance_mean"
 KEY_METRIC_KID_STD = "kernel_distance_std"
 KID_SUBSETS = 100
@@ -22,6 +24,15 @@ KID_GAMMA = None
 KID_COEF0 = 1
 # RBF kernel
 KID_SIGMA = 10.0
+
+
+def kernel_distance(
+    x: AudioMetricsData,
+    y: AudioMetricsData,
+):
+    return kid_features_to_metric(
+        ensure_ndarray(x.embeddings), ensure_ndarray(y.embeddings)
+    )
 
 
 def mmd2(K_XX, K_XY, K_YY, unit_diagonal=False, mmd_est="unbiased"):
@@ -181,9 +192,6 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     }
 
     return out
-
-
-kernel_distance = kid_features_to_metric
 
 
 # def kid_featuresdict_to_metric(
