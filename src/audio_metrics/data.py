@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from audio_metrics.metrics.density_coverage import nearest_neighbour_distances
+from audio_metrics.metrics.prdc import nearest_neighbour_distances
 
 
 def ensure_tensor(x: np.ndarray | torch.Tensor, device=None):
