@@ -15,7 +15,7 @@ def nearest_neighbour_distances(input_features, nearest_k):
 
 
 # adapted from https://github.com/clovaai/generative-evaluation-prdc/pull/10
-def compute_prdc(reference, candidate, nearest_k):
+def prdc(reference, candidate, nearest_k):
     """
     Computes precision, recall, density, and coverage given two manifolds.
 
