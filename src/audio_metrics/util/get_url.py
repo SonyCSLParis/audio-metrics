@@ -1,5 +1,12 @@
+from pathlib import Path
+import appdirs
+import logging
 from urllib import request
+
 from tqdm import tqdm
+
+
+PACKAGE_NAME = __name__.split(".", maxsplit=1)[0]
 
 
 def progress_hook(t):
@@ -40,10 +47,26 @@ def download_and_save(url, outfile):
         unit_scale=True,
         leave=True,
         miniters=1,
-        desc=url.split("/")[-1],
+        desc=f"Downloading {url.split('/')[-1]} to {Path(outfile).parent}",
     ) as t:
         request.urlretrieve(
             url,
             filename=outfile,
             reporthook=progress_hook(t),
         )
+
+
+def download_url(url):
+    cache_dir = Path(appdirs.user_cache_dir(PACKAGE_NAME))
+    name = url.rsplit("/", maxsplit=1)[-1]
+    fp = cache_dir / name
+    fn = fp.as_posix()
+    if not fp.exists():
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        logger = logging.getLogger(__name__)
+        logger.info(f"Downloading {url} to {fn}")
+        try:
+            download_and_save(url, fn)
+        except Exception as e:
+            raise Exception(f"Error downloading {url}") from e
+    return fn

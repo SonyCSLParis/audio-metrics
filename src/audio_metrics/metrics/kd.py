@@ -12,6 +12,8 @@ import torch
 from tqdm import tqdm
 import logging
 
+from audio_metrics.data import AudioMetricsData, ensure_ndarray
+
 KEY_METRIC_KID_MEAN = "kernel_distance_mean"
 KEY_METRIC_KID_STD = "kernel_distance_std"
 KID_SUBSETS = 100
@@ -22,6 +24,15 @@ KID_GAMMA = None
 KID_COEF0 = 1
 # RBF kernel
 KID_SIGMA = 10.0
+
+
+def kernel_distance(
+    x: AudioMetricsData,
+    y: AudioMetricsData,
+):
+    return kid_features_to_metric(
+        ensure_ndarray(x.embeddings), ensure_ndarray(y.embeddings)
+    )
 
 
 def mmd2(K_XX, K_XY, K_YY, unit_diagonal=False, mmd_est="unbiased"):
@@ -139,9 +150,6 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     assert features_2.ndim == 2
     assert features_1.shape[1] == features_2.shape[1]
 
-    # kid_subsets = get_kwarg("kid_subsets", kwargs)
-    # kid_subset_size = get_kwarg("kid_subset_size", kwargs)
-    # verbose = get_kwarg("verbose", kwargs)
     kid_subsets = kwargs.get("kid_subsets", KID_SUBSETS)
     kid_subset_size = kwargs.get("kid_subset_size", KID_SUBSET_SIZE)
     verbose = kwargs.get("verbose", False)
@@ -176,8 +184,7 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     ):
         f1 = features_1[rng.choice(n_samples_1, kid_subset_size, replace=False)]
         f2 = features_2[rng.choice(n_samples_2, kid_subset_size, replace=False)]
-        o = kernel_mmd2(f1, f2, kernel)
-        mmds[i] = o
+        mmds[i] = kernel_mmd2(f1, f2, kernel)
 
     out = {
         KEY_METRIC_KID_MEAN: float(np.mean(mmds)),
@@ -185,9 +192,6 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     }
 
     return out
-
-
-compute_kernel_distance = kid_features_to_metric
 
 
 # def kid_featuresdict_to_metric(

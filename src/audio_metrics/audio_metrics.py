@@ -1,286 +1,313 @@
-from pathlib import Path
-from collections import defaultdict
-import dataclasses
-import warnings
-
-import sklearn.decomposition
 import torch
-import numpy as np
-
-from prdc import prdc
-from .fad import (
-    mu_sigma_from_activations,
-    frechet_distance,
-)
-from .kid import compute_kernel_distance
-from .density_coverage import compute_density_coverage
-
-
-@dataclasses.dataclass()
-class MetricInputData:
-    activations: np.ndarray
-
-    @property
-    def mu(self):
-        if "_mu" not in self.__dict__:
-            mu, sigma = mu_sigma_from_activations(self.activations)
-            self.__dict__["_mu"] = mu
-            self.__dict__["_sigma"] = sigma
-        return self.__dict__["_mu"]
-
-    @property
-    def sigma(self):
-        if "_sigma" not in self.__dict__:
-            mu, sigma = mu_sigma_from_activations(self.activations)
-            self.__dict__["_mu"] = mu
-            self.__dict__["_sigma"] = sigma
-        return self.__dict__["_sigma"]
-
-    def get_radii(self, k_neighbor):
-        key = f"radii_{k_neighbor}"
-        radii = self.__dict__.get(key)
-        if radii is None:
-            radii = prdc.compute_nearest_neighbour_distances(self.activations, k_neighbor)
-            self.__dict__[key] = radii
-        return radii
-
-    def __len__(self):
-        return len(self.activations)
-
-    @property
-    def num_samples(self):
-        return len(self.activations)
-
-    @classmethod
-    def from_npz_file(cls, fp):
-        with np.load(fp) as data:
-            instance = cls(data["activations"])
-            instance.__dict__.update(data)
-            return instance
-
-    @classmethod
-    def from_dict(cls, items):
-        instance = cls(items["activations"])
-        instance.__dict__.update(items)
-        return instance
-
-    def to_npz_file(self, fp):
-        np.savez(fp, **self.__dict__)
+from pathlib import Path
+from audio_metrics.embed import embedding_pipeline, ItemCategory
+from audio_metrics.data import AudioMetricsData
+from audio_metrics.metrics.fad import frechet_distance
+from audio_metrics.metrics.kd import kernel_distance
+from audio_metrics.metrics.prdc import prdc
+from audio_metrics.metrics.apa import apa, apa_compute_d_x_xp
+from audio_metrics.projection import IncrementalPCA
+from audio_metrics.mix_functions import MIX_FUNCTIONS, DEFAULT_MIX_FUNCTION
+from audio_metrics.embedders import EMBEDDERS, DEFAULT_EMBEDDER
+from audio_metrics.util.gpu_parallel import GPUWorkerHandler
 
 
 class AudioMetrics:
-    """A class for distribution-based quality metrics of generated audio, based on
-    audio embeddings.  Currently supported metrics:
+    # metrics that need access to the full embeddings (not just mu, sigma)
+    _need_embeddings = set(("kd", "precision", "prdc"))
+    # for serialization
+    _amd = (
+        "stem_reference",
+        "mix_reference",
+        "mix_anti_reference",
+        "stem_reference_pca",
+        "mix_reference_pca",
+        "mix_anti_reference_pca",
+    )
 
-    * Fréchet Audio Distance (FAD)
-    * Kernel Distance (KD)
-    * Density and Coverage
-
-    """
-
-    def __init__(self, background_data=None, metrics=["fad", "kd", "dc"], k_neighbor=2):
-        self.bg_data = background_data
+    def __init__(
+        self,
+        metrics=["apa", "fad"],
+        n_pca=None,
+        device_indices=None,
+        embedder=None,
+        mix_function=None,
+        win_dur=5.0,
+        input_sr=None,
+    ):
+        self.gpu_handler = self._get_gpu_handler(device_indices)
         self.metrics = metrics
-        self._pca_projectors = {}
-        self._pca_n_components = None
-        self._pca_whiten = None
-        self._pca_bg_data = None
-        self.k_neighbor = k_neighbor
+        self.need_apa = "apa" in self.metrics
+        self.win_dur = win_dur
+        self.input_sr = input_sr
+        if n_pca is None:
+            self.stem_projection = None
+            self.mix_projection = None
+        else:
+            self.stem_projection = IncrementalPCA(n_components=n_pca)
+            self.mix_projection = IncrementalPCA(n_components=n_pca)
 
-    def __getstate__(self):
-        return self.__dict__
+        if embedder is None or isinstance(embedder, str):
+            self.embedder = self.get_embedder(embedder)
+        else:
+            self.embedder = embedder
 
-    def __setstate__(self, state):
+        if mix_function is None or isinstance(mix_function, str):
+            self.mix_function = self.get_mix_function(mix_function)
+        else:
+            self.mix_function = mix_function
+
+        self.apa_d_x_xp = None
+
+        if self.need_apa:
+            self.mix_reference = AudioMetricsData(self.store_mix_embeddings)
+            self.mix_anti_reference = AudioMetricsData(self.store_mix_embeddings)
+        else:
+            self.mix_reference = None
+            self.mix_anti_reference = None
+
+        if self.stems_mode:
+            self.stem_reference = AudioMetricsData(self.store_stem_embeddings)
+        else:
+            self.stem_reference = None
+
+        self.mix_reference_pca = None
+        self.mix_anti_reference_pca = None
+        self.stem_reference_pca = None
+
+    def save_state(self, fp: str | Path):
+        state = self.__getstate__().copy()
+        del state["mix_function"]
+        del state["embedder"]
+        del state["gpu_handler"]
+        for attr in self._amd:
+            item = state.get(attr)
+            if item:
+                state[attr] = item.serialize()
+        for attr in ("stem_projection", "mix_projection"):
+            item = state.get(attr)
+            if item:
+                state[attr] = item.__getstate__().copy()
+        torch.save(state, fp)
+
+    def load_state(self, fp: str | Path):
+        state = torch.load(fp, weights_only=True)
+        for attr in self._amd:
+            item = state.get(attr)
+            if item:
+                state[attr] = AudioMetricsData.deserialize(item)
+        for attr in ("stem_projection", "mix_projection"):
+            item = state.get(attr)
+            if item:
+                getattr(self, attr).__setstate__(item)
+                del state[attr]
         self.__dict__.update(state)
 
-    def set_background_data(self, source):
-        self.bg_data = self.load_metric_input_data(source)
+    @property
+    def stems_mode(self):
+        return any(metric for metric in self.metrics if metric != "apa")
 
-    def has_pca(self):
-        return len(self._pca_projectors) > 0
+    @property
+    def store_mix_embeddings(self):
+        return self.need_apa and self.mix_projection is not None
 
-    def set_pca_projection(self, n_components, whiten=True):
-        self._pca_n_components = n_components
-        self._pca_whiten = whiten
-        if n_components is None:
-            self._pca_projectors = {}
-            self._pca_bg_data = None
-        else:
-            self._pca_bg_data = self._fit_pca()
+    @property
+    def store_stem_embeddings(self):
+        return self.stem_projection is not None or any(
+            metric in self._need_embeddings for metric in self.metrics
+        )
 
-    def _fit_pca(self):
-        result = {}
-        assert (
-            self.bg_data is not None
-        ), "Need background data to call set_pca_projection (use `prepare_background()`)"
-        for key, data in self.bg_data.items():
-            msg = f"The number of PCA components ({self._pca_n_components}) cannot be larger than the number of embedding vectors ({len(data.activations)})"
-            assert self._pca_n_components <= len(data.activations), msg
-            projector = sklearn.decomposition.PCA(
-                n_components=self._pca_n_components, whiten=self._pca_whiten
+    def add_reference(self, reference):
+        metrics = embedding_pipeline(
+            reference,
+            embedder=self.embedder,
+            mix_function=self.mix_function,
+            gpu_handler=self.gpu_handler,
+            apa_mode="reference" if self.need_apa else None,
+            stems_mode=self.stems_mode,
+            store_mix_embeddings=self.store_mix_embeddings,
+            store_stem_embeddings=self.store_stem_embeddings,
+            win_dur=self.win_dur,
+            input_sr=self.input_sr,
+        )
+
+        stem_reference = metrics.get(ItemCategory.stem)
+        if stem_reference is not None:
+            # invalidate cache:
+            self.stem_reference_pca = None
+            self.stem_reference += stem_reference
+            self.stem_reference.recompute_stats()
+        mix_reference = metrics.get(ItemCategory.aligned)
+        if mix_reference is not None:
+            # invalidate cache:
+            self.mix_reference_pca = None
+            self.mix_anti_reference_pca = None
+            self.mix_reference += mix_reference
+
+        mix_anti_reference = metrics.get(ItemCategory.misaligned)
+        if mix_anti_reference is not None:
+            self.mix_anti_reference += mix_anti_reference
+
+    def reset_reference(self):
+        if self.need_apa:
+            self.apa_d_x_xp = None
+            self.mix_reference = AudioMetricsData(self.store_mix_embeddings)
+            self.mix_anti_reference = AudioMetricsData(self.store_mix_embeddings)
+            self.mix_reference_pca = None
+            self.mix_anti_reference_pca = None
+
+        if self.stems_mode:
+            self.stem_reference = AudioMetricsData(self.store_stem_embeddings)
+            self.stem_reference_pca = None
+
+    def ensure_stem_projection(self, ref, cand):
+        if self.stem_projection is None:
+            return ref, cand
+
+        store_embs = any(metric in self._need_embeddings for metric in self.metrics)
+
+        if self.stem_reference_pca is None:
+            self.stem_projection.partial_fit(ref.embeddings)
+            ref_emb = self.stem_projection.transform(ref.embeddings)
+            ref = AudioMetricsData(store_embs)
+            ref.add(ref_emb)
+            self.stem_reference_pca = ref
+
+        ref = self.stem_reference_pca
+
+        cand_emb = self.stem_projection.transform(cand.embeddings)
+        cand = AudioMetricsData(store_embs)
+        cand.add(cand_emb)
+
+        return ref, cand
+
+    def ensure_mix_projection(self, ref, anti_ref, cand):
+        if self.mix_projection is None:
+            return ref, anti_ref, cand
+
+        if self.mix_reference_pca is None:
+            self.mix_projection.partial_fit(ref.embeddings)
+
+            ref_emb = self.mix_projection.transform(ref.embeddings)
+            anti_ref_emb = self.mix_projection.transform(anti_ref.embeddings)
+
+            # only apa + fad for now, so no need for embeddings
+            ref = AudioMetricsData(store_embeddings=False)
+            anti_ref = AudioMetricsData(store_embeddings=False)
+
+            ref.add(ref_emb)
+            anti_ref.add(anti_ref_emb)
+
+            self.mix_reference_pca = ref
+            self.mix_anti_reference_pca = anti_ref
+
+        ref, anti_ref = self.mix_reference_pca, self.mix_anti_reference_pca
+        cand_emb = self.mix_projection.transform(cand.embeddings)
+        cand = AudioMetricsData(store_embeddings=False)
+        cand.add(cand_emb)
+
+        return ref, anti_ref, cand
+
+    def __call__(self, candidate):
+        return self.evaluate(candidate)
+
+    def evaluate(self, candidate):
+        self.assert_reference()
+
+        metrics = embedding_pipeline(
+            candidate,
+            embedder=self.embedder,
+            mix_function=self.mix_function,
+            gpu_handler=self.gpu_handler,
+            apa_mode="candidate" if self.need_apa else None,
+            stems_mode=self.stems_mode,
+            store_mix_embeddings=self.store_mix_embeddings,
+            store_stem_embeddings=self.store_stem_embeddings,
+            win_dur=self.win_dur,
+            input_sr=self.input_sr,
+        )
+
+        stem_cand = metrics.get(ItemCategory.stem)
+        apa_cand = metrics.get(ItemCategory.aligned)
+        stem_ref = self.stem_reference
+        apa_ref = self.mix_reference
+        apa_anti_ref = self.mix_anti_reference
+
+        if self.stems_mode and stem_cand is None:
+            raise ValueError("No stem candidate embeddings were computed")
+
+        if self.need_apa and apa_cand is None:
+            raise ValueError("No apa candidate embeddings were computed")
+
+        if self.stems_mode:
+            stem_ref, stem_cand = self.ensure_stem_projection(stem_ref, stem_cand)
+
+        if self.need_apa:
+            apa_ref, apa_anti_ref, apa_cand = self.ensure_mix_projection(
+                apa_ref,
+                apa_anti_ref,
+                apa_cand,
             )
-            result[key] = MetricInputData(projector.fit_transform(data.activations))
-            # eagerly cache mu/sigma by accessing them
-            result[key].mu
-            result[key].sigma
-            self._pca_projectors[key] = projector
+            if self.apa_d_x_xp is None:
+                self.apa_d_x_xp = apa_compute_d_x_xp(apa_ref, apa_anti_ref)
+
+        result = {}
+
+        if "fad" in self.metrics:
+            result["fad"] = frechet_distance(stem_cand, stem_ref)
+
+        if "kd" in self.metrics:
+            result.update(kernel_distance(stem_cand, stem_ref))
+
+        if "prdc" in self.metrics:
+            k = max(1, min(10, len(stem_ref), len(stem_cand)))
+            result.update(prdc(stem_ref, stem_cand, k))
+
+        if self.need_apa:
+            result["apa"] = apa(
+                apa_cand,
+                apa_ref,
+                apa_anti_ref,
+                self.apa_d_x_xp,
+            )
+
         return result
 
-    def project(self, data_dict):
-        result = {}
-        for key, data in data_dict.items():
-            result[key] = MetricInputData(
-                self._pca_projectors[key].transform(data.activations)
-            )
-        return result
+    def _get_gpu_handler(self, device_indices):
+        if device_indices or device_indices is None:
+            return GPUWorkerHandler(device_indices)
+        return None
 
-    def load_metric_input_data(self, source):
-        # source can be either:
-        # 1. An .npz file containing the precomputed data
-        #    (as produced by `save_background_statistics()`)
-        # 2. a dictionary with numpy arrays as values,
-        # 3. a dictionary with MetricsInputData instances as values
-        if isinstance(source, dict):
-            result = {}
-            for k, v in source.items():
-                if isinstance(v, MetricInputData):
-                    result[k] = v
-                else:
-                    result[k] = MetricInputData(v)
-            return result
-        try:
-            source_fp = Path(source)
-        except TypeError as e:
-            raise Exception(
-                f"Source must be a file path to an npz file, or a MetricsInputData instance: {source}"
-            ) from e
-        if source_fp.is_file():
-            # assume source is npz file
-            return self.load_metric_input_data_from_file(source_fp)
+    def get_mix_function(self, mix_function):
+        if mix_function is None:
+            mix_function = DEFAULT_MIX_FUNCTION
+        func = MIX_FUNCTIONS.get(mix_function)
+        if func is None:
+            msg = f"Unknown mix_function {mix_function}, must be one of {MIX_FUNCTIONS.keys()}"
+            raise ValueError(msg)
+        return func
 
-    def __call__(self, source):
-        return self.compare_to_background(source)
+    def get_embedder(self, embedder):
+        if embedder is None:
+            embedder = DEFAULT_EMBEDDER
+        info = EMBEDDERS.get(embedder)
+        if info is None:
+            msg = f"Unknown embedder {embedder}, must be one of {EMBEDDERS.keys()}"
+            raise ValueError(msg)
+        cls, kwargs = info
+        return cls(**kwargs)
 
-    def compare_to_background(self, source, return_data=False, device=None):
-        if self.bg_data is None:
-            raise RuntimeError(
-                "Background data not available. Please provide data using `prepare_background()`"
-            )
-        fake_data_dict = self.load_metric_input_data(source)
-        result = {}
-        if self.has_pca():
-            real_data_dict = self._pca_bg_data
-            fake_data_dict = self.project(fake_data_dict)
-        else:
-            real_data_dict = self.bg_data
-
-        for key, real_data in real_data_dict.items():
-            fake_data = fake_data_dict[key]
-            key_str = "_".join(key)
-            if "fad" in self.metrics:
-                try:
-                    fad_value = frechet_distance(
-                        fake_data.mu,
-                        fake_data.sigma,
-                        real_data.mu,
-                        real_data.sigma,
-                        device=device,
-                    ).item()
-                except ValueError as e:
-                    warnings.warn(f"Error computing FAD: {e}, setting to NaN")
-                    fad_value = np.nan
-
-                result[f"fad_{key_str}"] = float(fad_value)
-
-            if "kd" in self.metrics:
-                kid_vals = compute_kernel_distance(
-                    torch.from_numpy(fake_data.activations),
-                    torch.from_numpy(real_data.activations),
-                )
-                for kid_name, kid_val in kid_vals.items():
-                    result[f"{kid_name}_{key_str}"] = kid_val
-
-            result["n_real"] = len(real_data)
-            result["n_fake"] = len(fake_data)
-
-            if "dc" in self.metrics:
-                n_neighbors = min(result["n_real"], result["n_fake"], self.k_neighbor)
-                density, coverage = compute_density_coverage(
-                    real_data, fake_data, n_neighbors
-                )
-                result[f"density_{key_str}"] = density
-                result[f"coverage_{key_str}"] = coverage
-
-        result = dict(sorted(result.items()))
-
-        if return_data:
-            return result, fake_data_dict
-        return result
-
-    @staticmethod
-    def check_name(name):
-        if "/" in name:
-            msg = f'Saving names containing "/" is not supported: {name}'
-            raise Exception(msg)
-
-    @staticmethod
-    def load_metric_input_data_from_file(fp):
-        with np.load(fp) as data_dict:
-            return AudioMetrics.load_metric_input_data_from_dict(data_dict)
-
-    @staticmethod
-    def load_metric_input_data_from_dict(data_dict):
-        bg_items = defaultdict(dict)
-        for name, data in data_dict.items():
-            try:
-                model, layer, stat_name = name.split("/", maxsplit=2)
-            except ValueError as e:
-                raise ValueError(
-                    f"Unexpected/invalid background statistics name {name}"
-                ) from e
-            bg_items[(model, layer)][stat_name] = data
-
-        bg_data = {}
-        for key, val in bg_items.items():
-            bg_data[key] = MetricInputData.from_dict(val)
-        return bg_data
-
-    def get_serializable_background(self, ensure_radii=False):
-        """obsolete?"""
-        """Return background as a dict that can be passed to `np.savez`"""
-        if self.bg_data is None:
-            return None
-        to_save = {}
-        for (model, layer), mid in self.bg_data.items():
-            AudioMetrics.check_name(model)
-            AudioMetrics.check_name(layer)
-            if ensure_radii:
-                # make sure radii are computed before we save (to be reused in
-                # future density/coverage computations)
-                mid.get_radii(self.k_neighbor)
-
-            for name, data in mid.__dict__.items():
-                key = f"{model}/{layer}/{name}"
-                to_save[key] = data
-        return to_save
-
-    def save_background_statistics(self, outfile, ensure_radii=False):
-        """obsolete?"""
-        to_save = self.get_serializable_background(ensure_radii)
-        if to_save is None:
-            return
-        np.savez(outfile, **to_save)
-
-    @staticmethod
-    def save_embeddings_file(embeddings, fp):
-        to_save = {}
-        for (model, layer), emb in embeddings.items():
-            AudioMetrics.check_name(model)
-            AudioMetrics.check_name(layer)
-            key = f"{model}/{layer}/activations"
-            to_save[key] = emb
-        np.savez(fp, **to_save)
-
-
-def save_embeddings(outfile, embeddings):
-    AudioMetrics.save_embeddings_file(embeddings, outfile)
+    def assert_reference(self):
+        msg = (
+            "The reference dataset is empty. This can have various causes:"
+            "  - You have not called AudioMetrics.add_reference()"
+            "  - You have called AudioMetrics.add_reference() with an empty dataset"
+            "  - The duration of your audio is shorter than `win_dur` ({self.win_dur}s)."
+            "    (You can specify your own `win_dur` when instantiating AudioMetrics)"
+        )
+        if self.stems_mode:
+            if self.stem_reference.n is None:
+                raise ValueError(msg)
+        if self.need_apa:
+            if self.mix_reference.n is None:
+                raise ValueError(msg)

@@ -1,21 +1,19 @@
-import numpy as np
+# import numpy as np
+# from scipy import linalg
 import torch
-from scipy import linalg
 
-
-def mu_sigma_from_activations(act):
-    mu = np.mean(act, axis=0)
-    sigma = np.cov(act, rowvar=False)
-    return mu, sigma
-
-
-def ensure_tensor(x, device=None):
-    if not isinstance(x, torch.Tensor):
-        x = torch.as_tensor(x)
-    return x.pin_memory().to(device, non_blocking=True) if device else x
+from audio_metrics.data import AudioMetricsData, ensure_tensor
 
 
 def frechet_distance(
+    x: AudioMetricsData,
+    y: AudioMetricsData,
+    device=None,
+):
+    return _frechet_distance(x.mean, x.cov, y.mean, y.cov, device=device).item()
+
+
+def _frechet_distance(
     mu_x: torch.Tensor,
     sigma_x: torch.Tensor,
     mu_y: torch.Tensor,
