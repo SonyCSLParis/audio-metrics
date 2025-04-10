@@ -153,8 +153,8 @@ def embedding_pipeline(
             items,
             _resample,
             n_workers=64,
-            in_buffer_size=256,
-            out_buffer_size=256,
+            in_buffer_size=32,
+            out_buffer_size=32,
         )
 
     # 2. slice songs into windows
@@ -184,8 +184,8 @@ def embedding_pipeline(
             n_workers=64,
             desc="mixing pairs",
             discard_input=False,
-            in_buffer_size=256,
-            out_buffer_size=256,
+            in_buffer_size=32,
+            out_buffer_size=32,
         )
 
     # accumulate into batches
@@ -198,8 +198,8 @@ def embedding_pipeline(
         desc="computing embeddings",
         discard_input=False,
         gpu_worker_handler=gpu_handler,
-        in_buffer_size=256,
-        out_buffer_size=256,
+        in_buffer_size=32,
+        out_buffer_size=32,
     )
 
     # aggregate the statistics
