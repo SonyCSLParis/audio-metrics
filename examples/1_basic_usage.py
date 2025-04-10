@@ -10,7 +10,7 @@ window_len = sr * n_seconds
 reference = np.random.random((n_windows, window_len))
 candidate = np.random.random((n_windows, window_len))
 
-metrics = AudioMetrics(metrics=["fad", "prdc"])
+metrics = AudioMetrics(metrics=["fad", "prdc", "kd"])
 metrics.add_reference(reference)
 
 print(metrics.evaluate(candidate))
@@ -20,7 +20,7 @@ print(metrics.evaluate(candidate))
 reference = np.random.random((n_windows, window_len, 2))
 # Data can also be passed as a generator, to facilitate processing larger
 # datasets
-candidate = (np.random.random(window_len, 2) for _ in range(n_windows))
+candidate = (np.random.random((window_len, 2)) for _ in range(n_windows))
 
 metrics = AudioMetrics(metrics=["fad", "prdc", "apa"])
 metrics.add_reference(reference)

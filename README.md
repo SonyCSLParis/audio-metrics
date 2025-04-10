@@ -88,7 +88,7 @@ print(metrics.evaluate(candidate))
 reference = np.random.random((n_windows, window_len, 2))
 # Data can also be passed as a generator, to facilitate processing larger
 # datasets
-candidate = (np.random.random(window_len, 2) for _ in range(n_windows))
+candidate = (np.random.random((window_len, 2)) for _ in range(n_windows))
 
 metrics = AudioMetrics(metrics=["fad", "prdc", "apa"])
 metrics.add_reference(reference)
