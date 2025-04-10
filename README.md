@@ -61,8 +61,8 @@ The measures can be combined with embeddings from any of the following models:
 
 ## Usage
 
-The following examples demonstrate the use of the package. More examples are
-also included in the `./examples` directory.
+The following examples demonstrate the use of the package. For more examples see
+`./examples` directory.
 
 
 ```python
@@ -95,21 +95,14 @@ metrics.add_reference(reference)
 print(metrics.evaluate(candidate))
 ```
 
-
-### Accompaniment Prompt Adherence
-
-The Accompaniment Prompt Adherence metric takes pairs of audio samples (mix, and
-accompaniment, respectively), and computes how well mixes and accompaniments fit
-together, given a background set of (mix,accompaniment) pairs. The following
-example shows how to compute the Accompaniment Prompt Adherence metric:
-
-## Notes
+When computing APA the reference and candidate sets must be pairs of context and
+stem. Note that when FAD and/or PRDC are computed as additional metrics, these
+are only computed for the stems (the contexts are ignored for these metrics).
 
 
 ## Citation
 
-For more information on the audio prompt adherence metric, and to cite this work, please use:
-
+To cite this work, please use:
 
 >  M. Grachten and J. Nistal. (2025). Accompaniment Prompt Adherence: A Measure for Evaluating Music Accompaniment Systems. Proceedings of the International Conference on Acoustics, Speech, and Signal Processing. IEEE. Hyderabad, India.
 
