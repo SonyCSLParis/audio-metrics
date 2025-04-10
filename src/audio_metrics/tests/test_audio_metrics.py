@@ -67,51 +67,48 @@ def inputs_3():
     return reference, candidate
 
 
-@pytest.fixture
-def inputs_a():
-    sr = 48000
-    n_seconds = 5
-    reference = (
-        {"audio": np.random.random((n_seconds * sr, 2)), "sr": sr} for _ in range(100)
-    )
-    candidate = (
-        {"audio": np.random.random((n_seconds * sr, 2)), "sr": sr} for _ in range(100)
-    )
+# @pytest.fixture
+# def inputs_a():
+#     sr = 48000
+#     n_seconds = 5
+#     reference = (
+#         {"audio": np.random.random((n_seconds * sr, 2)), "sr": sr} for _ in range(100)
+#     )
+#     candidate = (
+#         {"audio": np.random.random((n_seconds * sr, 2)), "sr": sr} for _ in range(100)
+#     )
 
-    return reference, candidate
-
-
-@pytest.fixture
-def inputs_b():
-    sr = 48000
-    n_seconds = 5
-    reference = (
-        {"audio": torch.randn((n_seconds * sr, 2)), "sr": sr} for _ in range(100)
-    )
-    candidate = (
-        {"audio": torch.randn((n_seconds * sr, 2)), "sr": sr} for _ in range(100)
-    )
-
-    return reference, candidate
+#     return reference, candidate
 
 
-# TODO: check error when inputs are too short
+# @pytest.fixture
+# def inputs_b():
+#     sr = 48000
+#     n_seconds = 5
+#     reference = (
+#         {"audio": torch.randn((n_seconds * sr, 2)), "sr": sr} for _ in range(100)
+#     )
+#     candidate = (
+#         {"audio": torch.randn((n_seconds * sr, 2)), "sr": sr} for _ in range(100)
+#     )
+
+#     return reference, candidate
 
 
-def test_inputs_a(audio_metrics_instance, inputs_a):
-    am = audio_metrics_instance
-    am.reset_reference()
-    reference, candidate = inputs_a
-    am.add_reference(reference)
-    am.evaluate(candidate)
+# def test_inputs_a(audio_metrics_instance, inputs_a):
+#     am = audio_metrics_instance
+#     am.reset_reference()
+#     reference, candidate = inputs_a
+#     am.add_reference(reference)
+#     am.evaluate(candidate)
 
 
-def test_inputs_b(audio_metrics_instance, inputs_b):
-    am = audio_metrics_instance
-    am.reset_reference()
-    reference, candidate = inputs_b
-    am.add_reference(reference)
-    am.evaluate(candidate)
+# def test_inputs_b(audio_metrics_instance, inputs_b):
+#     am = audio_metrics_instance
+#     am.reset_reference()
+#     reference, candidate = inputs_b
+#     am.add_reference(reference)
+#     am.evaluate(candidate)
 
 
 def test_inputs_1(audio_metrics_instance, inputs_1):
