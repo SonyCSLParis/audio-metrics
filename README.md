@@ -78,7 +78,13 @@ window_len = sr * n_seconds
 reference = np.random.random((n_windows, window_len))
 candidate = np.random.random((n_windows, window_len))
 
-metrics = AudioMetrics(metrics=["fad", "prdc"])
+metrics = AudioMetrics(
+    metrics=[
+        "prdc",  # precision, recall, density, coverage
+        "fad",  # frechet audio distance
+        "kd",  # kernel distance
+    ],
+)
 metrics.add_reference(reference)
 
 print(metrics.evaluate(candidate))
@@ -90,7 +96,10 @@ reference = np.random.random((n_windows, window_len, 2))
 # datasets
 candidate = (np.random.random((window_len, 2)) for _ in range(n_windows))
 
-metrics = AudioMetrics(metrics=["fad", "prdc", "apa"])
+# stem-only metrics (like FAD), can be computed simultaneously with APA
+metrics = AudioMetrics(
+    metrics=["fad", "apa"],
+)
 metrics.add_reference(reference)
 print(metrics.evaluate(candidate))
 ```
