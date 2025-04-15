@@ -20,7 +20,7 @@ einops = ">=0.7.0"
 resampy = ">=0.2.2"
 # need git version because pypi version has version-mismatch issue with
 # transformers package preventing checkpoint loading
-laion_clap = { git = "https://github.com/LAION-AI/CLAP.git" }
+# laion_clap = { git = "https://github.com/LAION-AI/CLAP.git" }
 torchvision = ">=0.17.1" # missing dependency for laion_clap
 prdc = ">=0.2"
 pyloudnorm = ">=0.1.1"
