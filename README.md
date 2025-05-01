@@ -53,10 +53,17 @@ The measures can be combined with embeddings from any of the following models:
    source .venv/bin/activate
    ```
 
-4. Install the package and its dependencies:
+4. Install the package and its dependencies: 
+
    ```
-	pip install .
-	```
+   pip install '.[examples]'
+   ```
+
+   When you don't intend to run the examples, just use:
+
+   ```
+   pip install .
+   ```
 
 
 ## Usage
