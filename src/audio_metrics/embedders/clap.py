@@ -8,14 +8,34 @@ LAION_CLAP_LAYERS = ["audio_projection.0", "audio_projection.2"]
 
 
 class LaionCLAP:
-    def __init__(self, ckpt=None, layer=None):
-        import laion_clap
+    def __init__(self, ckpt=None, layer=None, model=None):
+        """Initialize the LAION CLAP audio embedding model, either by wrapping
+        the existing `model`, or by instantiating a new model.
 
-        if ckpt is None:
-            ckpt = LAION_CLAP_MUSIC_CHECKPOINT_URL
-        ckpt = download_url(ckpt)
-        self.clap = laion_clap.CLAP_Module(enable_fusion=False, amodel="HTSAT-base")
-        self.clap.load_ckpt(ckpt, verbose=False)
+
+
+        :param ckpt: Path or URL to checkpoint file.  Defaults to music-only
+            checkpoint.
+        :type ckpt: str, optional
+
+        :param layer: Specific layer to extract activations from.  Must be one
+            of: "audio_projection.0" or "audio_projection.2".  If None, uses
+            final embeddings.
+        :type layer: str, optional
+
+        :param model: Pre-initialized CLAP model to use instead of loading.
+        :type model: CLAP_Module, optional
+        """
+        if model is not None:
+            self.clap = model
+        else:
+            import laion_clap
+
+            if ckpt is None:
+                ckpt = LAION_CLAP_MUSIC_CHECKPOINT_URL
+            ckpt = download_url(ckpt)
+            self.clap = laion_clap.CLAP_Module(enable_fusion=False, amodel="HTSAT-base")
+            self.clap.load_ckpt(ckpt, verbose=False)
         self.layer = layer
 
     @property

@@ -23,6 +23,8 @@ class GPUWorkerHandler:
         self.available_gpus = queue.Queue()
         if device_indices is None:
             self.device_indices = tuple(range(torch.cuda.device_count()))
+        else:
+            self.device_indices = device_indices
         if not self.device_indices:
             raise "No GPUs found, cannot use `gpu_parallel()`"
         for i in self.device_indices:

@@ -35,7 +35,9 @@ class AudioMetrics:
         win_dur=5.0,
         input_sr=None,
     ):
-        self.gpu_handler = self._get_gpu_handler(device_indices)
+        self.device_indices = device_indices
+        self.gpu_handler = None
+        self.embedder = embedder
         self.metrics = metrics
         self.need_apa = "apa" in self.metrics
         self.win_dur = win_dur
@@ -46,11 +48,6 @@ class AudioMetrics:
         else:
             self.stem_projection = IncrementalPCA(n_components=n_pca)
             self.mix_projection = IncrementalPCA(n_components=n_pca)
-
-        if embedder is None or isinstance(embedder, str):
-            self.embedder = self.get_embedder(embedder)
-        else:
-            self.embedder = embedder
 
         if mix_function is None or isinstance(mix_function, str):
             self.mix_function = self.get_mix_function(mix_function)
@@ -74,6 +71,13 @@ class AudioMetrics:
         self.mix_reference_pca = None
         self.mix_anti_reference_pca = None
         self.stem_reference_pca = None
+
+    def setup_embedder(self, embedder=None, device_indices=None):
+        self.gpu_handler = self._get_gpu_handler(device_indices)
+        if embedder is None or isinstance(embedder, str):
+            self.embedder = self.get_embedder(embedder)
+        else:
+            self.embedder = embedder
 
     def save_state(self, fp: str | Path):
         state = self.__getstate__().copy()
@@ -118,6 +122,7 @@ class AudioMetrics:
         )
 
     def add_reference(self, reference):
+        self._ensure_embedder()
         metrics = embedding_pipeline(
             reference,
             embedder=self.embedder,
@@ -208,11 +213,16 @@ class AudioMetrics:
 
         return ref, anti_ref, cand
 
+    def _ensure_embedder(self):
+        if self.gpu_handler is None:
+            self.setup_embedder(self.embedder, self.device_indices)
+
     def __call__(self, candidate):
         return self.evaluate(candidate)
 
     def evaluate(self, candidate):
-        self.assert_reference()
+        self._assert_reference()
+        self._ensure_embedder()
 
         metrics = embedding_pipeline(
             candidate,
@@ -297,7 +307,7 @@ class AudioMetrics:
         cls, kwargs = info
         return cls(**kwargs)
 
-    def assert_reference(self):
+    def _assert_reference(self):
         msg = (
             "The reference dataset is empty. This can have various causes:"
             "  - You have not called AudioMetrics.add_reference()"
