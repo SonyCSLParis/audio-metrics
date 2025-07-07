@@ -18,6 +18,7 @@ dependencies = [
     "resampy",
     "tqdm",
     "appdirs",
+    "rich>=14.0.0",
 ]
 
 [tool.uv]

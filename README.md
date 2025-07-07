@@ -82,6 +82,7 @@ n_seconds = 5
 n_windows = 100
 window_len = sr * n_seconds
 
+# create random audio signals
 reference = np.random.random((n_windows, window_len))
 candidate = np.random.random((n_windows, window_len))
 
