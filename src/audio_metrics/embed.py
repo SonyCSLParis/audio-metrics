@@ -3,7 +3,6 @@ from typing import Literal
 from functools import partial
 from enum import IntEnum
 from itertools import tee, chain
-from rich import print
 
 import torch
 import numpy as np
