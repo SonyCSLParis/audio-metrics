@@ -4,7 +4,7 @@ import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view, as_strided
 import scipy
 import pyloudnorm as pyln
-from cylimiter import Limiter
+import numpy_audio_limiter
 import opt_einsum
 
 
@@ -171,9 +171,13 @@ def mix_preserve_loudness(audio, sr):
     vmax = np.max(np.abs(s2))
     if vmax > 1.0:
         warnings.warn(f"Reducing gain (peak amp: {vmax:.2f})")
-        limiter = Limiter()
-        s2 = limiter.apply(s2)
-
+        s2 = numpy_audio_limiter.limit(
+            signal=s2.astype(np.float32).reshape((1, -1)),
+            attack_coeff=0.99,
+            release_coeff=0.99,
+            delay=527,
+            threshold=0.5,
+        )[0]
     return s2
 
 
@@ -216,9 +220,13 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
     # l_mix_check = meter.integrated_loudness(mix)  # measure loudness
     vmax = np.max(np.abs(mix))
     if vmax > 1.0:
-        # warnings.warn(f"Reducing gain to prevent clipping ({vmax:.2f})")
-        limiter = Limiter()
-        mix = limiter.apply(mix)
+        mix = numpy_audio_limiter.limit(
+            signal=mix.astype(np.float32).reshape((1, -1)),
+            attack_coeff=0.99,
+            release_coeff=0.99,
+            delay=527,
+            threshold=0.5,
+        )[0]
 
     if np.any(np.isnan(mix)):
         print(f"NaN with vmax={vmax}")
