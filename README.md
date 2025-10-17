@@ -1,5 +1,7 @@
 # Audio Metrics
 
+[![PyPI version](https://badge.fury.io/py/audio-metrics.svg)](https://pypi.org/project/audio-metrics/)
+
 This repository contains a python package to compute distribution-based quality
 metrics for audio data using embeddings, with a focus on music.
 
@@ -41,29 +43,27 @@ The measures can be combined with embeddings from any of the following models:
 
 ## Installation
 
-1. Download this repository (`git clone https://github.com/SonyCSLParis/audio-metrics.git`)
+Install from PyPI:
 
-2. Change to the repository root directory (`cd audio-metrics`)
+```bash
+pip install audio-metrics
+```
 
-3. You can either install into an existing python environment (activate it and
-   go to step 4), or create and activate a new environment like this:
+To run the examples, install with the examples dependencies:
 
-   ```
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
+```bash
+pip install 'audio-metrics[examples]'
+```
 
-4. Install the package and its dependencies: 
+### Development Installation
 
-   ```
-   pip install '.[examples]'
-   ```
+For development or to use the latest version from source:
 
-   When you don't intend to run the examples, just use:
-
-   ```
-   pip install .
-   ```
+```bash
+git clone https://github.com/SonyCSLParis/audio-metrics.git
+cd audio-metrics
+pip install -e '.[dev]'
+```
 
 
 ## Usage
