@@ -1,0 +1,56 @@
+name: Create Release on Version Change
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: ["completed"]
+
+jobs:
+  detect-version:
+    name: Detect version change
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
+    outputs:
+      changed: ${{ steps.tagcheck.outputs.changed }}
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Parse version
+        id: parse
+        run: |
+          set -e
+          CURR=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$CURR" >> $GITHUB_OUTPUT
+
+      - name: Check if tag already exists
+        id: tagcheck
+        run: |
+          set -e
+          VER='v'${{ steps.parse.outputs.version }}
+          git fetch --tags --quiet
+          if git rev-parse -q --verify "refs/tags/$VER" >/dev/null; then
+            echo "Tag $VER already exists; skipping release"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "No tag $VER; proceeding with release"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+  release:
+    if: needs.detect-version.outputs.changed == 'true'
+    needs: detect-version
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.detect-version.outputs.version }}
+          name: v${{ needs.detect-version.outputs.version }}
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
