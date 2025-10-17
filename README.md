@@ -7,13 +7,14 @@ metrics for audio data using embeddings, with a focus on music.
 
 It features the following metrics:
 
+* Accompaniment Prompt Adherence (APA, see https://arxiv.org/abs/2503.06346 )
+
 * Fréchet Distance (see https://arxiv.org/abs/1812.08466 )
 
 * Kernel Distance/Maximum Mean Discrepancy (see https://arxiv.org/abs/1812.08466 )
 
 * Density and Coverage (see https://arxiv.org/abs/2002.09797 )
 
-* Accompaniment Prompt Adherence (see https://arxiv.org/abs/2503.06346 )
 
 The measures have in common that they compare a **set** of candidate audio
 tracks against a **set** of reference tracks, rather than evaluating individual
