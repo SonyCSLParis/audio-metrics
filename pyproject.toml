@@ -1,6 +1,6 @@
 [project]
 name = "audio-metrics"
-version = "1.0.2"
+version = "1.0.3"
 description = "Metrics to measure the quality of audio"
 authors = [{name = "Maarten Grachten"}]
 readme = "README.md"
