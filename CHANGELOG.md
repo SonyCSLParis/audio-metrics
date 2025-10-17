@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.1] - 2025-10-17
 
 ### Added
-- GitHub Actions workflows for automated releases and PyPI publishing
+- GitHub Actions workflow for automated releases and PyPI publishing
 - `__version__` attribute available in package
 
 ### Changed
