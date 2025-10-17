@@ -26,12 +26,9 @@ KID_COEF0 = 1
 KID_SIGMA = 10.0
 
 
-def kernel_distance(
-    x: AudioMetricsData,
-    y: AudioMetricsData,
-):
+def kernel_distance(x: AudioMetricsData, y: AudioMetricsData, seed: int | None = None):
     return kid_features_to_metric(
-        ensure_ndarray(x.embeddings), ensure_ndarray(y.embeddings)
+        ensure_ndarray(x.embeddings), ensure_ndarray(y.embeddings), rng_seed=seed
     )
 
 
@@ -192,20 +189,6 @@ def kid_features_to_metric(features_1, features_2, **kwargs):
     }
 
     return out
-
-
-# def kid_featuresdict_to_metric(
-#     featuresdict_1, featuresdict_2, feat_layer_name, **kwargs
-# ):
-#     features_1 = featuresdict_1[feat_layer_name]
-#     features_2 = featuresdict_2[feat_layer_name]
-
-#     # make sur
-#     # kid_subsets = kwargs.get("kid_subsets", 100)
-#     # kid_subset_size = kwargs.get("kid_subset_size", 1000)
-
-#     metric = kid_features_to_metric(features_1, features_2, **kwargs)
-#     return metric
 
 
 if __name__ == "__main__":

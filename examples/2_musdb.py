@@ -1,5 +1,6 @@
 import random
-
+from functools import partial
+from rich import print
 import numpy as np
 import musdb
 
@@ -26,20 +27,29 @@ def create_ctx_stem_pair(song, rng=None):
     return out
 
 
-def misalign_pairs(pairs):
+def misalign_pairs(pairs, rng=None):
+    rng = rng or random
     N = len(pairs)
     idx = list(range(N))
-    random.shuffle(idx)
+    rng.shuffle(idx)
     for i in idx:
         j = (i + 1) % N
         yield np.stack((pairs[i][:, 0], pairs[j][:, 1]), axis=-1)
 
 
+seed = 12345678
+rng = random.Random()
+rng.seed(seed)
+
 musdb_train = musdb.DB(subsets="train", download=True, sample_rate=sr)
 musdb_test = musdb.DB(subsets="test", download=True, sample_rate=sr)
-reference = cpu_parallel(musdb_train, create_ctx_stem_pair, n_workers=16)
-candidate_good = list(cpu_parallel(musdb_test, create_ctx_stem_pair, n_workers=16))
-candidate_bad = list(misalign_pairs(candidate_good))
+reference = cpu_parallel(
+    musdb_train, partial(create_ctx_stem_pair, rng=rng), n_workers=16
+)
+candidate_good = list(
+    cpu_parallel(musdb_test, partial(create_ctx_stem_pair, rng=rng), n_workers=16)
+)
+candidate_bad = list(misalign_pairs(candidate_good, rng=rng))
 
 am = AudioMetrics(
     embedder="laion_clap_music",
@@ -53,6 +63,7 @@ am = AudioMetrics(
     ],
     # Choose a low dimensionality because the MUSDB reference set is quite small (<100)
     n_pca=10,
+    seed=seed,
 )
 am.add_reference(reference)
 print()

@@ -34,12 +34,14 @@ class AudioMetrics:
         mix_function=None,
         win_dur=5.0,
         input_sr=None,
+        seed=None,
     ):
         self.gpu_handler = self._get_gpu_handler(device_indices)
         self.metrics = metrics
         self.need_apa = "apa" in self.metrics
         self.win_dur = win_dur
         self.input_sr = input_sr
+        self.seed = seed
         if n_pca is None:
             self.stem_projection = None
             self.mix_projection = None
@@ -129,6 +131,7 @@ class AudioMetrics:
             store_stem_embeddings=self.store_stem_embeddings,
             win_dur=self.win_dur,
             input_sr=self.input_sr,
+            seed=self.seed,
         )
 
         stem_reference = metrics.get(ItemCategory.stem)
@@ -225,6 +228,7 @@ class AudioMetrics:
             store_stem_embeddings=self.store_stem_embeddings,
             win_dur=self.win_dur,
             input_sr=self.input_sr,
+            seed=self.seed,
         )
 
         stem_cand = metrics.get(ItemCategory.stem)
@@ -257,7 +261,7 @@ class AudioMetrics:
             result["fad"] = frechet_distance(stem_cand, stem_ref)
 
         if "kd" in self.metrics:
-            result.update(kernel_distance(stem_cand, stem_ref))
+            result.update(kernel_distance(stem_cand, stem_ref, self.seed))
 
         if "prdc" in self.metrics:
             k = max(1, min(10, len(stem_ref), len(stem_cand)))
