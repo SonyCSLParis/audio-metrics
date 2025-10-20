@@ -126,3 +126,15 @@ To cite this work, please use:
 
 >  M. Grachten and J. Nistal. (2025). Accompaniment Prompt Adherence: A Measure for Evaluating Music Accompaniment Systems. Proceedings of the International Conference on Acoustics, Speech, and Signal Processing. IEEE. Hyderabad, India.
 
+```bibtex
+@inproceedings{grachten2025accompaniment,
+  title        = {Accompaniment Prompt Adherence: A Measure for Evaluating Music Accompaniment Systems},
+  author       = {Grachten, Maarten and Nistal, Javier},
+  booktitle    = {ICASSP 2025-2025 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  pages        = {1--5},
+  year         = {2025},
+  organization = {IEEE},
+  address      = {Hyderabad, India}
+  month        = apr
+}
+```
