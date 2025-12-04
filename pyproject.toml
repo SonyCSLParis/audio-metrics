@@ -7,9 +7,6 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "torch",
-    "torchvision>=0.24; python_version >= '3.13'", # missing dep for clap
-    "torchvision; python_version < '3.13'",
-    "laion-clap>=1.1.6",
     "opt-einsum",
     "pyloudnorm",
     "scikit-learn",
@@ -36,6 +33,13 @@ examples = [
     "musdb",
     "setuptools", # missing dep for musdb
 ]
+clap = [
+    "torchvision; python_version < '3.13'",
+    "torchvision>=0.24; python_version >= '3.13'", # missing dep for clap
+    "laion-clap>=1.1.6",
+]
+
+[dependency.groups]
 dev = [
     "rich",
     "pytest",
