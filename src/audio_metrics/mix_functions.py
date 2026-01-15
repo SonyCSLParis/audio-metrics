@@ -6,6 +6,64 @@ import scipy
 import pyloudnorm as pyln
 import numpy_audio_limiter
 import opt_einsum
+import numba
+
+
+@numba.jit(nopython=True, nogil=True)
+def _compute_loudness_gating_numba(filtered_squared, block_size, stride, G):
+    """Numba-accelerated loudness gating computation.
+
+    This function releases the GIL, enabling better thread parallelism.
+    Replaces the numpy/einsum operations in the original integrated_loudness_fast.
+    """
+    n = len(filtered_squared)
+    n_blocks = (n - block_size) // stride + 1
+
+    # Compute mean squared value for each block
+    z = np.empty(n_blocks, dtype=np.float64)
+    for i in range(n_blocks):
+        start = i * stride
+        block_sum = 0.0
+        for j in range(block_size):
+            block_sum += filtered_squared[start + j]
+        z[i] = block_sum / block_size
+
+    # Compute loudness per block
+    Gamma_a = -70.0  # Absolute threshold
+    l = np.empty(n_blocks, dtype=np.float64)
+    for i in range(n_blocks):
+        if z[i] > 0:
+            l[i] = -0.691 + 10.0 * np.log10(G * z[i])
+        else:
+            l[i] = -np.inf
+
+    # First gating pass - absolute threshold
+    z_sum = 0.0
+    count = 0
+    for i in range(n_blocks):
+        if l[i] >= Gamma_a:
+            z_sum += z[i]
+            count += 1
+
+    if count == 0:
+        return -np.inf
+
+    z_avg = z_sum / count
+    Gamma_r = -0.691 + 10.0 * np.log10(G * z_avg) - 10.0  # Relative threshold
+
+    # Second gating pass - relative + absolute threshold
+    z_sum = 0.0
+    count = 0
+    for i in range(n_blocks):
+        if l[i] > Gamma_r and l[i] > Gamma_a:
+            z_sum += z[i]
+            count += 1
+
+    if count == 0:
+        return -np.inf
+
+    z_avg = z_sum / count
+    return -0.691 + 10.0 * np.log10(G * z_avg)
 
 
 class Meter(pyln.Meter):
@@ -108,6 +166,45 @@ class Meter(pyln.Meter):
             LUFS = -0.691 + 10.0 * np.log10(einsum("c,c->", G, z_avg_gated))
         return LUFS
 
+    def integrated_loudness_numba(self, data):
+        """Measure integrated gated loudness using numba for better parallelism.
+
+        This version uses scipy.signal.lfilter for frequency weighting (releases GIL)
+        and a numba-compiled function for the gating computation (also releases GIL).
+        This provides better thread scaling than integrated_loudness_fast.
+
+        Only supports mono audio (1D input).
+
+        Params
+        ------
+        data : ndarray
+            Mono audio data of shape (samples,).
+
+        Returns
+        -------
+        LUFS : float
+            Integrated gated loudness in dB LUFS.
+        """
+        if data.ndim != 1:
+            raise ValueError("integrated_loudness_numba only supports mono audio")
+
+        # Apply frequency weighting filters (releases GIL)
+        filtered = data.astype(np.float64)
+        for filter_class, filter_stage in self._filters.items():
+            filtered = filter_stage.passband_gain * scipy.signal.lfilter(
+                filter_stage.b, filter_stage.a, filtered, axis=0
+            )
+
+        # Square the filtered signal
+        filtered_squared = filtered**2
+
+        # Compute gating using numba (releases GIL)
+        block_size = int(self.block_size * self.rate)
+        stride = int(self.block_size * 0.25 * self.rate)  # 75% overlap = 25% step
+        G = self.G[0]  # Mono gain
+
+        return _compute_loudness_gating_numba(filtered_squared, block_size, stride, G)
+
 
 def mix_tracks_peak_preserve(audio, sr):
     """Mix channels as as, and normalize to peak amplitude of the original waveforms
@@ -197,7 +294,7 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
         warnings.warn("Both channels silent")
         return audio[:, 0]
 
-    meter = pyln.Meter(sr)  # create BS.1770 meter
+    meter = Meter(sr)  # create BS.1770 meter
     if np.any(silent):
         warnings.warn("One channel silent")
         mix = audio[:, ~silent][:, 0]
@@ -205,8 +302,8 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
         with warnings.catch_warnings():
             s0, s1 = audio.T
             warnings.simplefilter("ignore")
-            l0 = meter.integrated_loudness(s0)
-            l1 = meter.integrated_loudness(s1)
+            l0 = meter.integrated_loudness_numba(s0)
+            l1 = meter.integrated_loudness_numba(s1)
             # set the loudness of s1 w.r.t. that of s0
             l1_trg = l0 + stem_db_red
             if not np.isinf(l1) and not np.isinf(l1_trg):
@@ -214,7 +311,7 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
             mix = s0 + s1
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        l_mix = meter.integrated_loudness(mix)  # measure loudness
+        l_mix = meter.integrated_loudness_numba(mix)  # measure loudness
         if not np.isinf(l_mix) and not np.isinf(out_db):
             mix = pyln.normalize.loudness(mix, l_mix, out_db)
     # l_mix_check = meter.integrated_loudness(mix)  # measure loudness

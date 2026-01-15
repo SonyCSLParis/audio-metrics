@@ -6,7 +6,7 @@ from itertools import tee, chain
 
 import torch
 import numpy as np
-import resampy
+import soxr
 
 from audio_metrics.util.audio import multi_audio_slicer
 from audio_metrics.util.shuffle import shuffle_stream
@@ -66,8 +66,21 @@ def serialize_items(items1, items2=None, apa_mode=False, stems_mode=False):
             yield {"audio": stem, "category": ItemCategory.stem}
 
 
-def resample(item, **kwargs):
-    return resampy.resample(ensure_ndarray(item).T, **kwargs).T
+def resample(item, sr_orig, sr_new):
+    """Resample audio using soxr (high quality, fast).
+
+    Args:
+        item: Audio data (numpy array or tensor).
+        sr_orig: Original sample rate.
+        sr_new: Target sample rate.
+
+    Returns:
+        Resampled audio as numpy array.
+    """
+    audio = ensure_ndarray(item)
+    # soxr expects (n_samples,) or (n_samples, n_channels)
+    # our data is (n_samples,) or (n_samples, 2) which matches
+    return soxr.resample(audio, sr_orig, sr_new)
 
 
 def mix_pair(data, mix_func, sr):
@@ -134,9 +147,7 @@ def embedding_pipeline(
     """
 
     _mix_pair = partial(mix_pair, mix_func=mix_function, sr=embedder.sr)
-    _resample = partial(
-        resample, sr_orig=input_sr, sr_new=embedder.sr, filter="kaiser_fast"
-    )
+    _resample = partial(resample, sr_orig=input_sr, sr_new=embedder.sr)
 
     items = iter(waveforms)
 
@@ -152,6 +163,7 @@ def embedding_pipeline(
             items,
             _resample,
             n_workers=64,
+            use_threads=True,  # soxr releases GIL, threads avoid IPC overhead
             in_buffer_size=32,
             out_buffer_size=32,
         )
@@ -181,6 +193,7 @@ def embedding_pipeline(
             items,
             _mix_pair,
             n_workers=64,
+            use_threads=True,  # mixing uses numpy/scipy which partially release GIL
             desc="mixing pairs",
             discard_input=False,
             in_buffer_size=32,
