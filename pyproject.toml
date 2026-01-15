@@ -16,7 +16,7 @@ dependencies = [
     "numpy-audio-limiter",
     "prdc",
     "einops",
-    "resampy",
+    "soxr",  # fast resampling (~40x faster than resampy)
     "tqdm",
     "appdirs",
 ]

@@ -22,9 +22,10 @@ class GPUWorkerHandler:
         self.pool = thread_pool
         self.available_gpus = queue.Queue()
         if device_indices is None:
-            self.device_indices = tuple(range(torch.cuda.device_count()))
+            device_indices = tuple(range(torch.cuda.device_count()))
+        self.device_indices = device_indices
         if not self.device_indices:
-            raise "No GPUs found, cannot use `gpu_parallel()`"
+            raise RuntimeError("No GPUs found, cannot use `gpu_parallel()`")
         for i in self.device_indices:
             self.available_gpus.put(i)
         self.models = {}
