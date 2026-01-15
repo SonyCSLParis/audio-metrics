@@ -163,6 +163,7 @@ def embedding_pipeline(
             items,
             _resample,
             n_workers=64,
+            use_threads=True,  # soxr releases GIL, threads avoid IPC overhead
             in_buffer_size=32,
             out_buffer_size=32,
         )
@@ -192,6 +193,7 @@ def embedding_pipeline(
             items,
             _mix_pair,
             n_workers=64,
+            use_threads=True,  # mixing uses numpy/scipy which partially release GIL
             desc="mixing pairs",
             discard_input=False,
             in_buffer_size=32,
