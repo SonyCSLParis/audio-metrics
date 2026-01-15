@@ -30,7 +30,7 @@ from audio_metrics.embed import (
 from audio_metrics.util.audio import multi_audio_slicer
 from audio_metrics.util.cpu_parallel import cpu_parallel
 from audio_metrics.util.gpu_parallel import gpu_parallel
-from audio_metrics.mix_functions import mix_tracks_loudness
+from audio_metrics.mix_functions import mix_tracks_loudness, mix_tracks_peak_preserve
 from audio_metrics.data import AudioMetricsData
 
 
@@ -165,14 +165,25 @@ def benchmark_gpu(model, n_batches, batch_size, device_indices):
 
 
 def benchmark_full_pipeline(
-    n_songs, song_duration, sr_in, sr_out, win_dur, batch_size, device_indices
+    n_songs,
+    song_duration,
+    sr_in,
+    sr_out,
+    win_dur,
+    batch_size,
+    device_indices,
+    use_loudness_norm=True,
 ):
     """Benchmark the full embedding pipeline with synthetic data."""
+    mix_func = mix_tracks_loudness if use_loudness_norm else mix_tracks_peak_preserve
+    mix_name = "loudness" if use_loudness_norm else "peak_preserve"
+
     print(f"\n{'=' * 70}")
-    print("Full Pipeline Benchmark")
+    print(f"Full Pipeline Benchmark (mix={mix_name})")
     print(f"{'=' * 70}")
     print(f"  Songs: {n_songs}, Duration: {song_duration}s, SR: {sr_in}->{sr_out}")
     print(f"  Window: {win_dur}s, Batch: {batch_size}, GPUs: {device_indices}")
+    print(f"  Mix function: {mix_name}")
 
     # Generate synthetic songs
     songs = list(generate_synthetic_songs(n_songs, song_duration, sr_in, stereo=True))
@@ -227,7 +238,7 @@ def benchmark_full_pipeline(
     # Stage 4: Mix pairs
     print("\nStage 4: Mixing...")
     t0 = time.perf_counter()
-    _mix_pair = partial(mix_pair, mix_func=mix_tracks_loudness, sr=sr_out)
+    _mix_pair = partial(mix_pair, mix_func=mix_func, sr=sr_out)
     mixed = list(
         cpu_parallel(
             iter(items),
@@ -310,6 +321,11 @@ def main():
     parser.add_argument(
         "--quick", action="store_true", help="Run quick individual benchmarks only"
     )
+    parser.add_argument(
+        "--no-loudness-norm",
+        action="store_true",
+        help="Use peak-preserve mixing instead of loudness normalization",
+    )
     args = parser.parse_args()
 
     if args.gpus:
@@ -345,6 +361,7 @@ def main():
             win_dur=args.win_dur,
             batch_size=args.batch_size,
             device_indices=device_indices,
+            use_loudness_norm=not args.no_loudness_norm,
         )
 
 

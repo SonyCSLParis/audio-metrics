@@ -197,7 +197,7 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
         warnings.warn("Both channels silent")
         return audio[:, 0]
 
-    meter = pyln.Meter(sr)  # create BS.1770 meter
+    meter = Meter(sr)  # create BS.1770 meter (fast version)
     if np.any(silent):
         warnings.warn("One channel silent")
         mix = audio[:, ~silent][:, 0]
@@ -205,8 +205,8 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
         with warnings.catch_warnings():
             s0, s1 = audio.T
             warnings.simplefilter("ignore")
-            l0 = meter.integrated_loudness(s0)
-            l1 = meter.integrated_loudness(s1)
+            l0 = meter.integrated_loudness_fast(s0)
+            l1 = meter.integrated_loudness_fast(s1)
             # set the loudness of s1 w.r.t. that of s0
             l1_trg = l0 + stem_db_red
             if not np.isinf(l1) and not np.isinf(l1_trg):
@@ -214,7 +214,7 @@ def mix_tracks_loudness(audio, sr, stem_db_red=-4.0, out_db=-20.0):
             mix = s0 + s1
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        l_mix = meter.integrated_loudness(mix)  # measure loudness
+        l_mix = meter.integrated_loudness_fast(mix)  # measure loudness
         if not np.isinf(l_mix) and not np.isinf(out_db):
             mix = pyln.normalize.loudness(mix, l_mix, out_db)
     # l_mix_check = meter.integrated_loudness(mix)  # measure loudness
