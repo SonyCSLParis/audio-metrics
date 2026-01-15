@@ -17,6 +17,7 @@ dependencies = [
     "prdc",
     "einops",
     "soxr",  # fast resampling (~40x faster than resampy)
+    "numba",  # GIL-free loudness computation for better thread scaling
     "tqdm",
     "appdirs",
 ]
